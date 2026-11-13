@@ -85,6 +85,9 @@ p{margin:0 0 10px;overflow-wrap:anywhere}
 .gates span{white-space:nowrap}
 .item .rt{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .flag{color:var(--warn);font-size:.8rem}
+.sp{margin:0 0 8px}.sp-l{display:flex;justify-content:space-between;font-size:.82rem}
+.sp-b{height:6px;border-radius:3px;background:var(--line);margin-top:3px}.sp-b i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.spread{gap:0 18px}
 .why{font-size:.88rem;color:var(--ink);margin:2px 0 3px}
 .acts{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:2px}
 .acts button{white-space:nowrap}
@@ -139,7 +142,7 @@ nav button[aria-current="page"]{color:var(--accent);box-shadow:inset 0 2px 0 var
 /* ============ State ============ */
 const KEY='langeTermijn.v1';
 const DEFAULTS={
-  settings:{key:'',targetEtf:70,capPct:8,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
+  settings:{key:'',targetEtf:70,capPct:8,capSector:35,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
   // ISIN -> how to price it. EUR-listed assets follow a US-listed proxy after a one-time calibration.
   map:{
     'IE00B4L5Y983':{sym:'IWDA',type:'etf',ccy:'EUR',proxy:'URTH'},
@@ -187,8 +190,18 @@ const DEFAULTS={
     RGTI:'Speculatief, nog geen verdienmodel.'
   },
   focus:['TSM','RMS','ASML','ATLKY'],
+  // Region and sector per company (GICS-style). Unknown names are filled from Finnhub's company profile.
+  meta:{
+    GOOG:{r:'Noord-Amerika',s:'Communicatie'},META:{r:'Noord-Amerika',s:'Communicatie'},SPOT:{r:'Europa',s:'Communicatie'},
+    MSFT:{r:'Noord-Amerika',s:'Technologie'},NVDA:{r:'Noord-Amerika',s:'Technologie'},SNOW:{r:'Noord-Amerika',s:'Technologie'},
+    RGTI:{r:'Noord-Amerika',s:'Technologie'},TSM:{r:'Azië',s:'Technologie'},ASML:{r:'Europa',s:'Technologie'},
+    TSLA:{r:'Noord-Amerika',s:'Consument'},BABA:{r:'Azië',s:'Consument'},RMS:{r:'Europa',s:'Consument'},MELI:{r:'Latijns-Amerika',s:'Consument'},
+    NRG:{r:'Noord-Amerika',s:'Nutsbedrijven'},UMI:{r:'Europa',s:'Materialen'},
+    ATLKY:{r:'Europa',s:'Industrie'},SBGSY:{r:'Europa',s:'Industrie'},V:{r:'Noord-Amerika',s:'Financieel'}
+  },
+  thesis:{},
   csv:null,
-  cache:{quotes:{},metrics:{},fx:null}
+  cache:{quotes:{},metrics:{},fx:null,earnings:{},profiles:{}}
 };
 let S=load();
 function load(){
@@ -269,6 +282,13 @@ function symbolsNeeded(){
   for(const w of S.watch){q.add(w.sym);m.add(w.sym);}
   return{q:[...q],m:[...m]};
 }
+// Stocks we follow: [display symbol, symbol to ask Finnhub]
+function followed(){
+  const out=[],seen=new Set();
+  if(S.csv)for(const id in S.csv.positions){const mp=S.map[id];if(mp&&mp.type==='stock'&&!seen.has(mp.sym)){seen.add(mp.sym);out.push([mp.sym,mp.proxy||mp.sym]);}}
+  for(const w of S.watch)if(!seen.has(w.sym)){seen.add(w.sym);out.push([w.sym,w.sym]);}
+  return out;
+}
 let busy=false,again=false;
 async function refresh(force=false){
   if(busy){again=true;return;}
@@ -280,9 +300,17 @@ async function refresh(force=false){
     const jobs=[];
     for(const s of q){const c=S.cache.quotes[s];if(force||!c||Date.now()-c.at>5*60e3)jobs.push(['q',s]);}
     for(const s of m){const c=S.cache.metrics[s];if(force||!c||Date.now()-c.at>20*3600e3)jobs.push(['m',s]);}
-    for(const [k,s] of jobs){
+    for(const [sym,ref] of followed()){
+      const e=S.cache.earnings[sym];if(!e||Date.now()-e.at>12*3600e3)jobs.push(['e',sym,ref]);
+      if(!S.meta[sym]){const pr=S.cache.profiles[sym];if(!pr||Date.now()-pr.at>30*864e5)jobs.push(['p',sym,ref]);}
+    }
+    for(const [k,s,ref] of jobs){
       try{
-        if(k==='q'){const j=await fh('quote?symbol='+encodeURIComponent(s));S.cache.quotes[s]={c:j.c||null,pc:j.pc||null,dp:j.dp,at:Date.now()};}
+        if(k==='e'){const d=new Date(),f=new Date(d-30*864e5),t=new Date(+d+60*864e5),iso=x=>x.toISOString().slice(0,10);
+          const j=await fh(`calendar/earnings?from=${iso(f)}&to=${iso(t)}&symbol=${encodeURIComponent(ref)}`);
+          S.cache.earnings[s]={dates:((j&&j.earningsCalendar)||[]).map(x=>x.date).filter(Boolean).sort(),at:Date.now()};}
+        else if(k==='p'){const j=await fh('stock/profile2?symbol='+encodeURIComponent(ref));S.cache.profiles[s]={d:j||{},at:Date.now()};}
+        else if(k==='q'){const j=await fh('quote?symbol='+encodeURIComponent(s));S.cache.quotes[s]={c:j.c||null,pc:j.pc||null,dp:j.dp,at:Date.now()};}
         else{const j=await fh('stock/metric?metric=all&symbol='+encodeURIComponent(s));S.cache.metrics[s]={d:j.metric||{},at:Date.now()};}
       }catch(e){fails++;if(e.message==='auth'){authErr=true;break;}if(e.message==='limit'){await sleep(5000);}}
       await sleep(150);
@@ -306,6 +334,27 @@ function priceOf(id){
   const cal=S.calib[id],q=S.cache.quotes[mp.proxy];
   if(cal&&q&&q.c&&fx){const k=cal.eur/cal.proxyRef*cal.fxRef/fx;return{now:q.c*k,prev:(q.pc||q.c)*k,live:true};}
   return fallback();
+}
+const EU=['AT','BE','CH','DE','DK','ES','FI','FR','GB','IE','IT','LU','NL','NO','PT','SE'],AS=['CN','HK','IN','JP','KR','SG','TW','ID','TH','MY'],LA=['AR','BR','CL','MX','UY','CO','PE'];
+function metaOf(sym){
+  if(S.meta[sym])return S.meta[sym];
+  const p=S.cache.profiles[sym]&&S.cache.profiles[sym].d;if(!p||!p.country)return{r:'Onbekend',s:'Onbekend'};
+  const c=p.country;return{r:['US','CA'].includes(c)?'Noord-Amerika':EU.includes(c)?'Europa':AS.includes(c)?'Azië':LA.includes(c)?'Latijns-Amerika':'Overig',s:p.finnhubIndustry||'Onbekend'};
+}
+const isoToday=()=>{const d=today();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);};
+const dayDiff=d=>Math.round((new Date(d+'T12:00:00')-new Date(isoToday()+'T12:00:00'))/864e5);
+const fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('nl-BE',{weekday:'short',day:'numeric',month:'short'});
+function earningsInfo(sym){
+  const e=S.cache.earnings[sym];if(!e||!e.dates.length)return{};
+  const past=e.dates.filter(d=>dayDiff(d)<=0).pop(),next=e.dates.find(d=>dayDiff(d)>0);
+  const pending=past&&dayDiff(past)>=-30&&!(S.thesis[sym]&&S.thesis[sym].checked===past)?past:null;
+  return{past,next,pending};
+}
+function spread(C){
+  const st=C.rows.filter(r=>r.type==='stock'),tot=st.reduce((a,r)=>a+r.value,0)||1,R={},Sx={};
+  for(const r of st){const m=metaOf(r.sym);R[m.r]=(R[m.r]||0)+r.value/tot;Sx[m.s]=(Sx[m.s]||0)+r.value/tot;}
+  const sort=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]);
+  return{regions:sort(R),sectors:sort(Sx),sectorShare:Sx};
 }
 function metricFor(sym){const c=S.cache.metrics[sym];return c?c.d:null;}
 function gates(sym){
@@ -369,18 +418,20 @@ function advice(C){
     if(verdictOf(w.sym)==='pass'&&d!=null&&d<=-st.oppDrop/100)opps.push({sym:w.sym,name:w.name,drop:d,held:false});}
   opps.sort((a,b)=>a.drop-b.drop);
   const over=held.filter(r=>r.w>cap).sort((a,b)=>b.w-a.w);
+  const SP=spread(C),sCap=(st.capSector||100)/100,sectorFull=sym=>(SP.sectorShare[metaOf(sym).s]||0)>=sCap;
+  const fullSectors=SP.sectors.filter(([,v])=>v>sCap);
   let to='IWDA',why='';
   if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`;}
-  else if(opps.length&&amount>=st.minStockBuy){to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
+  else if(opps.some(o=>!sectorFull(o.sym))&&amount>=st.minStockBuy){const o0=opps.find(o=>!sectorFull(o.sym));opps.splice(opps.indexOf(o0),1);opps.unshift(o0);to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
   else if(amount>=st.minStockBuy){
     const proxyOf=f=>{const m=Object.values(S.map).find(x=>x.sym===f);return m&&m.proxy||f;};
-    const cands=S.focus.filter(f=>verdictOf(f,proxyOf(f))!=='fail'&&!(held.find(h=>h.sym===f)&&held.find(h=>h.sym===f).w>=cap))
+    const cands=S.focus.filter(f=>verdictOf(f,proxyOf(f))!=='fail'&&!sectorFull(f)&&!(held.find(h=>h.sym===f)&&held.find(h=>h.sym===f).w>=cap))
       .map(f=>{const h=held.find(x=>x.sym===f);const m=Object.values(S.map).find(x=>x.sym===f);return{sym:f,d:dropFromTop(h?(m&&m.proxy)||f:f)??0};})
       .sort((a,b)=>a.d-b.d);
     if(cands.length){to=cands[0].sym;why=`Aandelen zitten onder hun doel. ${cands[0].sym} is een voorrangsnaam${cands[0].d<0?` en staat ${pct(-cands[0].d,0,false)} onder de top`:''}.`;}
   }
   else why='Verhouding zit goed; ETF is de standaardkeuze.';
-  return{dd,mult,extra,amount,to,why,opps,over};
+  return{dd,mult,extra,amount,to,why,opps,over,fullSectors,sectorFull};
 }
 
 /* ============ Render ============ */
@@ -419,8 +470,13 @@ function rVandaag(){
   const sigs=[];
   if(A.mult>1||A.opps.length)sigs.push({c:'var(--accent)',t:`Volgende inleg: ${eur(A.amount)} naar ${esc(A.to)}`,s:esc(A.why)});
   for(const o of A.opps.slice(A.mult>1?0:1,2))sigs.push({c:'var(--pass)',t:`${esc(o.name)}: ${pct(-o.drop,0,false)} onder de top`,s:esc(S.notes[o.sym]||(o.held?'Je hebt het al; poorten in orde.':'Op je watchlist; poorten in orde.'))});
+  for(const [sec,v] of A.fullSectors.slice(0,1))sigs.push({c:'var(--warn)',t:`${esc(sec)} is ${pct(v,0,false)} van je aandelen`,s:`Boven je sectorplafond van ${st.capSector}%. Volgend aandelengeld naar een andere sector.`});
   for(const r of A.over.slice(0,2))sigs.push({c:'var(--warn)',t:`${esc(r.sym)} weegt ${pct(r.w,1,false)}`,s:`Boven je plafond van ${st.capPct}%. Niet bijkopen tot het gewicht zakt.`});
   const shown=sigs.slice(0,3);
+  // thesis follow-up around quarterly results
+  const fol=followed().map(([sym])=>({sym,...earningsInfo(sym)}));
+  const pend=fol.filter(x=>x.pending).sort((a,b)=>a.pending.localeCompare(b.pending));
+  const soon=fol.filter(x=>x.next&&dayDiff(x.next)<=10).sort((a,b)=>a.next.localeCompare(b.next));
 
   const tgt=st.targetEtf;
   el.innerHTML=`<div class="fade">
@@ -439,6 +495,12 @@ function rVandaag(){
   </div>
   ${shown.length?`<h2>Signalen</h2>${shown.map(s=>`<div class="sig"><span class="dot" style="background:${s.c}"></span><div><div class="t">${s.t}</div><div class="s">${s.s}</div></div></div>`).join('')}`:''}
   ${!S.settings.key?`<div class="note">Vul je Finnhub-sleutel in bij Instellingen om koersen op te halen.</div>`:''}
+  ${pend.length||soon.length?`<h2>These-check</h2>
+  ${pend.map(x=>`<div class="sig"><span class="dot" style="background:var(--accent)"></span><div style="flex:1">
+    <div class="t">${esc(x.sym)} publiceerde cijfers op ${fmtDate(x.pending)}</div>
+    <div class="s">${S.notes[x.sym]?'Je waarom: '+esc(S.notes[x.sym]):'Nog geen waarom ingevuld.'} Klopt dat nog?</div>
+    <div class="acts"><button class="link small" onclick="thesisOk('${esc(x.sym)}','${x.pending}')">Klopt nog</button><button class="link small" onclick="editNote('${esc(x.sym)}')">Wijzig waarom</button><button class="link small" style="color:var(--down)" onclick="thesisBroken('${esc(x.sym)}','${x.pending}')">These gebroken</button></div></div></div>`).join('')}
+  ${soon.length?`<p class="soft small" style="margin-top:10px">Binnenkort cijfers: ${soon.map(x=>esc(x.sym)+' '+fmtDate(x.next)).join(', ')}.</p>`:''}`:''}
   <p class="status" id="status">${esc(statusText)}</p>
   <p class="faint small">Posities volgens BUX-export tot ${esc(S.csv.lastTx)}. Dit is een rekenhulp op basis van je eigen regels, geen beleggingsadvies.</p>
   <div class="row-btn"><button class="ghost" onclick="refresh(true)">Koersen vernieuwen</button></div>
@@ -453,7 +515,11 @@ function rPosities(){
       <div class="nm">${r.type==='stock'?verdDot(r.verdict):''}${esc(r.sym)} <span class="faint" style="font-weight:400">${esc(r.name)}</span></div>
       <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>cap?` · <span class="flag">boven plafond</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
     </div><div class="rt num"><div class="v">${eur(r.value)}</div><div class="meta"><span class="${cls(r.day)}">${pct(r.day,1)}</span> · <span class="${cls(r.pl)}">${pct(r.pl,0)}</span></div></div></div>`).join('')}</div>`:'';
+  const SP=spread(C),capS=(S.settings.capSector||100)/100;
+  const bars=(list,capped)=>list.map(([k,v])=>`<div class="sp"><div class="sp-l"><span>${esc(k)}</span><span class="num ${capped&&v>capS?'flag':''}">${pct(v,0,false)}</span></div><div class="sp-b"><i style="width:${(v*100).toFixed(1)}%;${capped&&v>capS?'background:var(--warn)':''}"></i></div></div>`).join('');
   el.innerHTML=`<p class="date">${dateLine()}</p><h1>Posities</h1>
+  <h2>Spreiding van je aandelen</h2>
+  <div class="grid2 spread"><div><p class="soft small">Regio</p>${bars(SP.regions,false)}</div><div><p class="soft small">Sector (plafond ${S.settings.capSector}%)</p>${bars(SP.sectors,true)}</div></div>
   <p class="soft small">Rechts: vandaag · totaal t.o.v. aankoop. Bolletje: kwaliteitspoorten (groen slaagt, geel twijfel, rood slaagt niet).</p>
   ${block('ETF’s',C.rows.filter(r=>r.type==='etf'))}
   ${block('Aandelen',C.rows.filter(r=>r.type!=='etf'))}
@@ -464,6 +530,9 @@ function gateLine(sym){const g=gates(sym);if(!g)return`<div class="gates">Nog ge
 function verdSelect(sym){const v=S.verdict[sym]||'auto';
   return`<select class="verdsel" aria-label="Oordeel ${esc(sym)}" onchange="setVerdict('${esc(sym)}',this.value)">${[['auto','Auto'],['pass','Slaagt'],['doubt','Twijfel'],['fail','Slaagt niet']].map(([k,l])=>`<option value="${k}"${k===v?' selected':''}>${l}</option>`).join('')}</select>`;}
 function setVerdict(sym,v){S.verdict[sym]=v;save();render();}
+function thesisOk(sym,d){S.thesis[sym]={checked:d};save();render();}
+function thesisBroken(sym,d){if(!confirm(sym+' als "slaagt niet" markeren? Volgens je regels is een gebroken these de enige reden om te verkopen.'))return;
+  S.thesis[sym]={checked:d,broken:true};S.verdict[sym]='fail';S.notes[sym]='These gebroken na cijfers van '+d+'. '+(S.notes[sym]||'');save();render();}
 function toggleFocus(sym){S.focus=S.focus.includes(sym)?S.focus.filter(f=>f!==sym):[...S.focus,sym];save();render();}
 function editNote(sym){const v=prompt('Waarom staat '+sym+' op je lijst?',S.notes[sym]||'');if(v===null)return;S.notes[sym]=v.trim();save();render();}
 function rWatch(){
@@ -473,7 +542,7 @@ function rWatch(){
     const f=S.focus.includes(sym);
     return`<div class="item"><div class="main"><div class="nm">${verdDot(v)}${esc(sym)} <span class="faint" style="font-weight:400">${esc(name)}</span></div>
       ${S.notes[sym]?`<div class="why">${esc(S.notes[sym])}</div>`:''}
-      ${gateLine(ref||sym)}<div class="meta num">${d!=null?pct(d,0)+' t.o.v. 52-weken-top':'Geen koers'}</div>
+      ${gateLine(ref||sym)}<div class="meta num">${d!=null?pct(d,0)+' t.o.v. 52-weken-top':'Geen koers'}${(()=>{const e=earningsInfo(sym);return e.next?' · cijfers '+fmtDate(e.next):'';})()} · ${esc(metaOf(sym).r)}, ${esc(metaOf(sym).s)}</div>
       <div class="acts"><button class="link small" onclick="toggleFocus('${esc(sym)}')" aria-pressed="${f}">${f?'★ Voorrang':'☆ Geef voorrang'}</button><button class="link small" onclick="editNote('${esc(sym)}')">${S.notes[sym]?'Wijzig waarom':'Voeg waarom toe'}</button></div></div>
       <div class="rt">${verdSelect(sym)}${removable?`<div><button class="link small" onclick="removeWatch('${esc(sym)}')">Verwijder</button></div>`:''}</div></div>`;};
   el.innerHTML=`<p class="date">${dateLine()}</p><h1>Watchlist</h1>
@@ -507,6 +576,7 @@ function rSettings(){
   <h2>Je regels</h2>
   <div class="grid2">
     ${num('targetEtf','Doel ETF (%)')}${num('capPct','Plafond per aandeel (%)')}
+    ${num('capSector','Plafond per sector in aandelen (%)')}<div></div>
     ${num('monthly','Maandelijkse inleg (€)','50')}${num('buffer','Buffer voor extra inleg (€)','50')}
     ${num('dip1','Dubbel bij daling vanaf (%)')}${num('mult1','Factor')}
     ${num('dip2','Driedubbel bij daling vanaf (%)')}${num('mult2','Factor')}
