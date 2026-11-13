@@ -324,7 +324,7 @@ function autoVerdict(sym){
   const known=g.filter(x=>x.known),f=known.filter(x=>!x.ok).length;
   if(known.length<3)return null;return f===0?'pass':f===1?'doubt':'fail';
 }
-function verdictOf(sym){const o=S.verdict[sym];return o&&o!=='auto'?o:autoVerdict(sym);}
+function verdictOf(sym,ref){const o=S.verdict[sym];return o&&o!=='auto'?o:autoVerdict(ref||sym);}
 function dropFromTop(sym){
   const q=S.cache.quotes[sym],m=metricFor(sym);
   if(!q||!q.c||!m||!m['52WeekHigh'])return null;
@@ -340,7 +340,7 @@ function compute(){
     if(mp.type==='etf')etf+=value;else stk+=value;dayAbs+=value-prev;
     const ref=mp.proxy||mp.sym;
     rows.push({id,name:p.name,sym:mp.sym,type:mp.type,mapped:!!S.map[id],qty:p.qty,cost:p.cost,value,day:prev?value/prev-1:0,
-      live:pr.live,pl:p.cost?value/p.cost-1:null,verdict:mp.type==='stock'?verdictOf(mp.sym):null,drop:dropFromTop(ref)});
+      live:pr.live,pl:p.cost?value/p.cost-1:null,verdict:mp.type==='stock'?verdictOf(mp.sym,ref):null,drop:dropFromTop(ref)});
   }
   const invested=etf+stk,total=invested+(S.csv.cash||0);
   rows.forEach(r=>{r.w=total?r.value/total:0;});
@@ -373,7 +373,8 @@ function advice(C){
   if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`;}
   else if(opps.length&&amount>=st.minStockBuy){to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
   else if(amount>=st.minStockBuy){
-    const cands=S.focus.filter(f=>verdictOf(f)!=='fail'&&!(held.find(h=>h.sym===f)&&held.find(h=>h.sym===f).w>=cap))
+    const proxyOf=f=>{const m=Object.values(S.map).find(x=>x.sym===f);return m&&m.proxy||f;};
+    const cands=S.focus.filter(f=>verdictOf(f,proxyOf(f))!=='fail'&&!(held.find(h=>h.sym===f)&&held.find(h=>h.sym===f).w>=cap))
       .map(f=>{const h=held.find(x=>x.sym===f);const m=Object.values(S.map).find(x=>x.sym===f);return{sym:f,d:dropFromTop(h?(m&&m.proxy)||f:f)??0};})
       .sort((a,b)=>a.d-b.d);
     if(cands.length){to=cands[0].sym;why=`Aandelen zitten onder hun doel. ${cands[0].sym} is een voorrangsnaam${cands[0].d<0?` en staat ${pct(-cands[0].d,0,false)} onder de top`:''}.`;}
@@ -468,7 +469,7 @@ function editNote(sym){const v=prompt('Waarom staat '+sym+' op je lijst?',S.note
 function rWatch(){
   const el=$('#tab-watchlist');
   const held=S.csv?Object.keys(S.csv.positions).filter(id=>S.map[id]&&S.map[id].type==='stock').map(id=>({...S.map[id],name:S.csv.positions[id].name})):[];
-  const item=(sym,name,removable,ref)=>{const d=dropFromTop(ref||sym),v=verdictOf(sym);
+  const item=(sym,name,removable,ref)=>{const d=dropFromTop(ref||sym),v=verdictOf(sym,ref);
     const f=S.focus.includes(sym);
     return`<div class="item"><div class="main"><div class="nm">${verdDot(v)}${esc(sym)} <span class="faint" style="font-weight:400">${esc(name)}</span></div>
       ${S.notes[sym]?`<div class="why">${esc(S.notes[sym])}</div>`:''}
