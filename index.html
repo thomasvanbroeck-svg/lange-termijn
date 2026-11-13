@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lange termijn</title>
+<meta name="theme-color" content="#F3F5F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11161C" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lange termijn">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌳</text></svg>">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#F3F5F7; --surface:#FFFFFF; --ink:#18212B; --ink-soft:#5A6673; --ink-faint:#98A2AD;
+  --line:#E2E6EA; --accent:#1D5C7A; --accent-soft:#E3EEF3;
+  --up:#21794A; --down:#B23A48; --warn:#9A6A00; --warn-soft:#FBF3DF;
+  --pass:#21794A; --doubt:#9A6A00; --fail:#B23A48;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#11161C; --surface:#19212A; --ink:#E8ECF0; --ink-soft:#A3AEBA; --ink-faint:#6B7682;
+    --line:#26303A; --accent:#7FB8D6; --accent-soft:#1C2D38;
+    --up:#5CC98C; --down:#F0828F; --warn:#E4B54A; --warn-soft:#2B2618;
+    --pass:#5CC98C; --doubt:#E4B54A; --fail:#F0828F;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;}
+.num{font-variant-numeric:tabular-nums}
+main{max-width:560px;margin:0 auto;padding:20px 18px 110px}
+h1{font-size:2rem;line-height:1.15;font-weight:700;letter-spacing:-.02em;margin:6px 0 10px}
+h2{font-size:1.05rem;font-weight:650;margin:28px 0 10px}
+p{margin:0 0 10px}
+.soft{color:var(--ink-soft)} .faint{color:var(--ink-faint)}
+.small{font-size:.875rem}
+.date{font-size:.875rem;color:var(--ink-soft)}
+.sub{font-size:1.05rem;color:var(--ink-soft);margin-bottom:22px}
+.sub b{color:var(--ink);font-weight:600}
+
+/* key figures */
+.figs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.fig{background:var(--surface);padding:12px 12px 11px}
+.fig .l{font-size:.78rem;color:var(--ink-soft)}
+.fig .v{font-size:1.12rem;font-weight:650;margin-top:2px;white-space:nowrap}
+.fig .d{font-size:.8rem;margin-top:1px}
+.up{color:var(--up)} .down{color:var(--down)}
+
+/* allocation */
+.alloc{margin-top:22px}
+.bar{position:relative;height:12px;border-radius:6px;background:var(--line);overflow:visible;margin:8px 0 6px}
+.bar .etf{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:6px 0 0 6px}
+.bar .tgt{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--ink)}
+.alloc .row{display:flex;justify-content:space-between;font-size:.85rem;color:var(--ink-soft)}
+
+/* signals */
+.sig{display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--line)}
+.sig:last-child{border-bottom:1px solid var(--line)}
+.sig .dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px}
+.sig .t{font-weight:600}
+.sig .s{font-size:.9rem;color:var(--ink-soft)}
+
+/* lists */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .main{flex:1;min-width:0}
+.item .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .meta{font-size:.8rem;color:var(--ink-soft)}
+.item .rt{text-align:right;flex:none}
+.item .rt .v{font-weight:600}
+.item .rt .meta{white-space:nowrap}
+.verd{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.v-pass{background:var(--pass)} .v-doubt{background:var(--doubt)} .v-fail{background:var(--fail)} .v-none{background:var(--ink-faint)}
+.gates{display:flex;flex-wrap:wrap;column-gap:10px;font-size:.78rem;color:var(--ink-soft);margin-top:2px}
+.gates span{white-space:nowrap}
+.item .rt{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.flag{color:var(--warn);font-size:.8rem}
+.note{background:var(--warn-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:.9rem;margin:14px 0}
+
+/* forms */
+label{display:block;font-size:.85rem;color:var(--ink-soft);margin:12px 0 4px}
+input,select{width:100%;font:inherit;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:10px 14px;cursor:pointer;
+  background:var(--accent);color:var(--surface)}
+button.ghost{background:var(--accent-soft);color:var(--accent)}
+button.link{background:none;color:var(--accent);padding:4px 0;font-weight:500}
+.row-btn{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.cal{display:grid;grid-template-columns:1fr 110px auto;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.cal:first-child{border-top:0}
+.cal input{padding:8px 10px}
+.cal button{padding:8px 12px}
+.addw{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px}
+.addw button{padding:8px 12px}
+.verdsel{width:auto;padding:4px 6px;font-size:.8rem;border-radius:8px}
+
+/* tabs */
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom,0px);z-index:10}
+nav .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+nav button{background:none;color:var(--ink-faint);border-radius:0;padding:12px 4px 13px;font-weight:600;font-size:.85rem}
+nav button[aria-current="page"]{color:var(--accent);box-shadow:inset 0 2px 0 var(--accent)}
+.status{font-size:.8rem;color:var(--ink-faint);margin-top:26px}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:no-preference){ .fade{animation:f .35s ease-out} @keyframes f{from{opacity:0}to{opacity:1}} }
+</style>
+</head>
+<body>
+<main>
+  <section id="tab-vandaag"></section>
+  <section id="tab-posities" hidden></section>
+  <section id="tab-watchlist" hidden></section>
+  <section id="tab-instellingen" hidden></section>
+</main>
+<nav><div class="in">
+  <button data-tab="vandaag" aria-current="page">Vandaag</button>
+  <button data-tab="posities">Posities</button>
+  <button data-tab="watchlist">Watchlist</button>
+  <button data-tab="instellingen">Instellingen</button>
+</div></nav>
+
+<script>
+/* ============ State ============ */
+const KEY='langeTermijn.v1';
+const DEFAULTS={
+  settings:{key:'',targetEtf:70,capPct:8,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
+  // ISIN -> how to price it. EUR-listed assets follow a US-listed proxy after a one-time calibration.
+  map:{
+    'IE00B4L5Y983':{sym:'IWDA',type:'etf',ccy:'EUR',proxy:'URTH'},
+    'IE0031442068':{sym:'IUSA',type:'etf',ccy:'EUR',proxy:'SPY'},
+    'IE00B5BMR087':{sym:'CSPX',type:'etf',ccy:'EUR',proxy:'SPY'},
+    'FR0007054358':{sym:'MSE',type:'etf',ccy:'EUR',proxy:'FEZ'},
+    'BE0974320526':{sym:'UMI',type:'stock',ccy:'EUR',proxy:'UMICY'},
+    'FR0000052292':{sym:'RMS',type:'stock',ccy:'EUR',proxy:'HESAY'},
+    'US02079K1079':{sym:'GOOG',type:'stock',ccy:'USD'},
+    'US30303M1027':{sym:'META',type:'stock',ccy:'USD'},
+    'US5949181045':{sym:'MSFT',type:'stock',ccy:'USD'},
+    'US6293775085':{sym:'NRG',type:'stock',ccy:'USD'},
+    'US67066G1040':{sym:'NVDA',type:'stock',ccy:'USD'},
+    'US76655K1034':{sym:'RGTI',type:'stock',ccy:'USD'},
+    'US8334451098':{sym:'SNOW',type:'stock',ccy:'USD'},
+    'US8740391003':{sym:'TSM',type:'stock',ccy:'USD'},
+    'US88160R1014':{sym:'TSLA',type:'stock',ccy:'USD'},
+    'US01609W1027':{sym:'BABA',type:'stock',ccy:'USD'},
+    'LU1778762911':{sym:'SPOT',type:'stock',ccy:'USD'}
+  },
+  calib:{},
+  // Starting verdicts from the first screening; "auto" lets the gates decide.
+  verdict:{GOOG:'pass',MSFT:'pass',NVDA:'pass',META:'pass',TSM:'pass',RMS:'pass',
+           SPOT:'doubt',BABA:'doubt',TSLA:'doubt',NRG:'fail',UMI:'fail',SNOW:'fail',RGTI:'fail'},
+  watch:[{sym:'ASML',name:'ASML'},{sym:'SBGSY',name:'Schneider Electric'},{sym:'ATLKY',name:'Atlas Copco'},
+         {sym:'V',name:'Visa'},{sym:'MELI',name:'MercadoLibre'}],
+  csv:null,
+  cache:{quotes:{},metrics:{},fx:null}
+};
+let S=load();
+function load(){
+  try{const s=JSON.parse(localStorage.getItem(KEY));if(s){return deepMerge(structuredClone(DEFAULTS),s);}}catch(e){}
+  return structuredClone(DEFAULTS);
+}
+function deepMerge(a,b){for(const k in b){if(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])&&a[k]&&typeof a[k]==='object'&&!Array.isArray(a[k]))deepMerge(a[k],b[k]);else a[k]=b[k];}return a;}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+
+/* ============ Helpers ============ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=(n,d=0)=>n==null||isNaN(n)?'–':'€'+n.toLocaleString('nl-BE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=(n,d=1,sign=true)=>n==null||isNaN(n)?'–':(sign&&n*100>=0.5*10**-d?'+':'')+(Math.abs(n*100)<0.5*10**-d?0:n*100).toLocaleString('nl-BE',{minimumFractionDigits:d,maximumFractionDigits:d})+'%';
+const sEur=n=>n==null||isNaN(n)?'–':(n>0.5?'+':n<-0.5?'−':'')+eur(Math.abs(n));
+const cls=n=>n>0?'up':n<0?'down':'';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const today=()=>new Date();
+
+/* ============ CSV import (BUX export) ============ */
+function parseCSV(text){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+    else if(c==='"')q=true; else if(c===','){row.push(f);f='';}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f='';}
+    else f+=c;}
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  const h=rows.shift().map(x=>x.trim());
+  return rows.filter(r=>r.length>1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]])));
+}
+function importBux(text,fileName){
+  const rows=parseCSV(text);
+  const need=['Transaction Time (CET)','Transaction Category','Transfer Type','Transaction Amount','Asset Id'];
+  if(!rows.length||!need.every(k=>k in rows[0]))throw new Error('Dit lijkt geen BUX-export. Kies het CSV-bestand dat je uit de BUX-app downloadt.');
+  rows.sort((a,b)=>a['Transaction Time (CET)'].localeCompare(b['Transaction Time (CET)']));
+  const pos={},flows=[];let cash=null;
+  for(const r of rows){
+    const cat=r['Transaction Category'],tt=r['Transfer Type'],amt=parseFloat(r['Transaction Amount']);
+    const id=r['Asset Id'],qty=parseFloat(r['Asset Quantity']),price=parseFloat(r['Asset Price']);
+    const date=r['Transaction Time (CET)'].slice(0,10);
+    if(r['Cash Balance Amount']!==''&&r['Cash Balance Amount']!=null)cash=parseFloat(r['Cash Balance Amount']);
+    if((cat==='deposits'||cat==='withdrawals')&&!isNaN(amt))flows.push({date,amount:amt});
+    if(cat==='trades'&&id){
+      const p=pos[id]||(pos[id]={name:r['Asset Name'],qty:0,cost:0,lastPrice:null,lastPriceCcy:r['Asset Currency'],lastDate:null});
+      if(/ASSET_TRADE_BUY/.test(tt)){p.qty+=qty;if(!isNaN(price)){p.lastPrice=price;p.lastPriceCcy=r['Asset Currency'];p.lastDate=date;}}
+      else if(/ASSET_TRADE_SELL/.test(tt)){const q=Math.abs(qty);if(p.qty>0)p.cost*=Math.max(0,(p.qty-q)/p.qty);p.qty-=q;}
+      else if(tt==='CASH_DEBIT'&&amt<0)p.cost+=-amt;          // EUR paid for a buy
+    }
+  }
+  for(const id in pos)if(pos[id].qty<1e-6)delete pos[id];
+  S.csv={positions:pos,cash:cash??0,flows,importedAt:new Date().toISOString(),fileName,lastTx:rows.at(-1)['Transaction Time (CET)'].slice(0,10)};
+  save();
+}
+
+/* ============ Market data ============ */
+async function fh(path){
+  const r=await fetch('https://finnhub.io/api/v1/'+path+(path.includes('?')?'&':'?')+'token='+encodeURIComponent(S.settings.key));
+  if(r.status===401||r.status===403)throw new Error('auth');
+  if(r.status===429)throw new Error('limit');
+  if(!r.ok)throw new Error('http');
+  return r.json();
+}
+async function getFx(force){
+  if(S.settings.fxManual)return S.settings.fxManual;
+  const c=S.cache.fx;
+  if(!force&&c&&Date.now()-c.at<6*3600e3)return c.rate;
+  for(const u of['https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD','https://api.frankfurter.app/latest?from=EUR&to=USD']){
+    try{const j=await (await fetch(u)).json();const rate=j.rates&&j.rates.USD;if(rate){S.cache.fx={rate,at:Date.now()};return rate;}}catch(e){}
+  }
+  return c?c.rate:null;
+}
+function symbolsNeeded(){
+  const q=new Set(),m=new Set();
+  if(S.csv)for(const id in S.csv.positions){const mp=S.map[id];if(!mp)continue;
+    const s=mp.proxy||mp.sym;q.add(s);if(mp.type==='stock')m.add(s);}
+  q.add('URTH');m.add('URTH');               // MSCI World proxy for the dip ladder
+  for(const w of S.watch){q.add(w.sym);m.add(w.sym);}
+  return{q:[...q],m:[...m]};
+}
+let busy=false,again=false;
+async function refresh(force=false){
+  if(busy){again=true;return;}
+  if(!S.settings.key){status('Vul je gratis Finnhub-sleutel in bij Instellingen om koersen op te halen.');return;}
+  busy=true;status('Koersen ophalen…');
+  const {q,m}=symbolsNeeded();let fails=0,authErr=false;
+  try{
+    await getFx(force);
+    const jobs=[];
+    for(const s of q){const c=S.cache.quotes[s];if(force||!c||Date.now()-c.at>5*60e3)jobs.push(['q',s]);}
+    for(const s of m){const c=S.cache.metrics[s];if(force||!c||Date.now()-c.at>20*3600e3)jobs.push(['m',s]);}
+    for(const [k,s] of jobs){
+      try{
+        if(k==='q'){const j=await fh('quote?symbol='+encodeURIComponent(s));S.cache.quotes[s]={c:j.c||null,pc:j.pc||null,dp:j.dp,at:Date.now()};}
+        else{const j=await fh('stock/metric?metric=all&symbol='+encodeURIComponent(s));S.cache.metrics[s]={d:j.metric||{},at:Date.now()};}
+      }catch(e){fails++;if(e.message==='auth'){authErr=true;break;}if(e.message==='limit'){await sleep(5000);}}
+      await sleep(150);
+    }
+    save();
+    status(authErr?'Finnhub weigert de sleutel. Controleer hem bij Instellingen.':
+      'Bijgewerkt om '+new Date().toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'})+(fails?` · ${fails} koers(en) niet beschikbaar`:''));
+  }finally{busy=false;render();if(again){again=false;refresh();}}
+}
+let statusText='',csvMsg='';
+function status(t){statusText=t;const el=$('#status');if(el)el.textContent=t;}
+
+/* ============ Valuation ============ */
+function priceOf(id){
+  const mp=S.map[id],p=S.csv.positions[id];
+  const fx=S.settings.fxManual||(S.cache.fx&&S.cache.fx.rate);
+  const fallback=()=>{let v=p.lastPrice;if(p.lastPriceCcy==='USD'&&fx)v=v/fx;return{now:v,prev:v,live:false};};
+  if(!mp)return fallback();
+  if(mp.ccy==='USD'&&!mp.proxy){const q=S.cache.quotes[mp.sym];
+    if(q&&q.c&&fx)return{now:q.c/fx,prev:(q.pc||q.c)/fx,live:true};return fallback();}
+  const cal=S.calib[id],q=S.cache.quotes[mp.proxy];
+  if(cal&&q&&q.c&&fx){const k=cal.eur/cal.proxyRef*cal.fxRef/fx;return{now:q.c*k,prev:(q.pc||q.c)*k,live:true};}
+  return fallback();
+}
+function metricFor(sym){const c=S.cache.metrics[sym];return c?c.d:null;}
+function gates(sym){
+  const m=metricFor(sym);if(!m)return null;
+  const g=[
+    ['Winst',m.netProfitMarginTTM,v=>v>0],
+    ['Kasstroom',m.pfcfShareTTM,v=>v>0],
+    ['ROIC',m.roiTTM,v=>v>=15],
+    ['Schuld',m['totalDebt/totalEquityQuarterly'],v=>v<=1],
+    ['Groei',m.revenueGrowth5Y,v=>v>=5]
+  ].map(([n,v,t])=>({n,known:v!=null&&!isNaN(v),ok:v!=null&&!isNaN(v)&&t(v)}));
+  return g;
+}
+function autoVerdict(sym){
+  const g=gates(sym);if(!g)return null;
+  const known=g.filter(x=>x.known),f=known.filter(x=>!x.ok).length;
+  if(known.length<3)return null;return f===0?'pass':f===1?'doubt':'fail';
+}
+function verdictOf(sym){const o=S.verdict[sym];return o&&o!=='auto'?o:autoVerdict(sym);}
+function dropFromTop(sym){
+  const q=S.cache.quotes[sym],m=metricFor(sym);
+  if(!q||!q.c||!m||!m['52WeekHigh'])return null;
+  return q.c/m['52WeekHigh']-1;
+}
+function compute(){
+  if(!S.csv)return null;
+  const rows=[];let etf=0,stk=0,dayAbs=0,anyStatic=false;
+  for(const id in S.csv.positions){
+    const p=S.csv.positions[id],mp=S.map[id]||{sym:id,type:'stock',ccy:'?'},pr=priceOf(id);
+    const value=p.qty*pr.now,prev=p.qty*pr.prev;
+    if(!pr.live)anyStatic=true;
+    if(mp.type==='etf')etf+=value;else stk+=value;dayAbs+=value-prev;
+    const ref=mp.proxy||mp.sym;
+    rows.push({id,name:p.name,sym:mp.sym,type:mp.type,mapped:!!S.map[id],qty:p.qty,cost:p.cost,value,day:prev?value/prev-1:0,
+      live:pr.live,pl:p.cost?value/p.cost-1:null,verdict:mp.type==='stock'?verdictOf(mp.sym):null,drop:dropFromTop(ref)});
+  }
+  const invested=etf+stk,total=invested+(S.csv.cash||0);
+  rows.forEach(r=>{r.w=total?r.value/total:0;});
+  rows.sort((a,b)=>b.value-a.value);
+  // YTD (modified Dietz) from the value at 31/12 and this year's deposits
+  let ytd=null;const st=S.settings;const yr=today().getFullYear();
+  if(st.v0&&st.v0Year===yr){
+    const start=new Date(yr,0,1),end=today(),T=(end-start)/864e5;
+    let F=0,W=0;for(const f of S.csv.flows){const d=new Date(f.date);if(d>=start&&d<=end){F+=f.amount;W+=f.amount*((end-d)/864e5)/T;}}
+    ytd={r:(total-st.v0-F)/(st.v0+W),abs:total-st.v0-F};
+  }
+  const netIn=S.csv.flows.reduce((a,f)=>a+f.amount,0);
+  return{rows,etf,stk,invested,total,dayAbs,dayPct:total?dayAbs/(total-dayAbs):0,ytd,netIn,anyStatic,
+    etfShare:invested?etf/invested:0};
+}
+function advice(C){
+  const st=S.settings,dd=dropFromTop('URTH');
+  let mult=1;if(dd!=null){if(dd<=-st.dip2/100)mult=st.mult2;else if(dd<=-st.dip1/100)mult=st.mult1;}
+  const extra=Math.min(st.monthly*(mult-1),st.buffer||0);
+  const amount=st.monthly+extra;
+  const tgt=st.targetEtf/100,cap=st.capPct/100;
+  const held=C.rows.filter(r=>r.type==='stock');
+  const opps=[];
+  for(const r of held)if(r.verdict==='pass'&&r.drop!=null&&r.drop<=-st.oppDrop/100&&r.w<cap)opps.push({sym:r.sym,name:r.name,drop:r.drop,held:true});
+  for(const w of S.watch){if(held.some(h=>h.sym===w.sym))continue;const d=dropFromTop(w.sym);
+    if(verdictOf(w.sym)==='pass'&&d!=null&&d<=-st.oppDrop/100)opps.push({sym:w.sym,name:w.name,drop:d,held:false});}
+  opps.sort((a,b)=>a.drop-b.drop);
+  const over=held.filter(r=>r.w>cap).sort((a,b)=>b.w-a.w);
+  let to='IWDA',why='';
+  if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`;}
+  else if(opps.length&&amount>=st.minStockBuy){to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
+  else why='Verhouding zit goed; ETF is de standaardkeuze.';
+  return{dd,mult,extra,amount,to,why,opps,over};
+}
+
+/* ============ Render ============ */
+let tab=(location.hash||'#vandaag').slice(1);
+function setTab(t){
+  if(!['vandaag','posities','watchlist','instellingen'].includes(t))t='vandaag';tab=t;
+  document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='tab-'+t);
+  document.querySelectorAll('nav button').forEach(b=>{if(b.dataset.tab===t)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  try{if(location.hash!=='#'+t)history.replaceState(null,'','#'+t);}catch(e){}
+  render();window.scrollTo(0,0);
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+addEventListener('hashchange',()=>setTab(location.hash.slice(1)));
+
+function render(){
+  ({vandaag:rVandaag,posities:rPosities,watchlist:rWatch,instellingen:rSettings})[tab]();
+}
+const dateLine=()=>today().toLocaleDateString('nl-BE',{weekday:'long',day:'numeric',month:'long'});
+
+function emptyState(el){
+  el.innerHTML=`<p class="date">${dateLine()}</p><h1>Laad je BUX-export om te beginnen.</h1>
+  <p class="soft">Daarna komen je koersen elke dag vanzelf binnen. Je posities werk je één keer per maand bij met een nieuwe export.</p>
+  <div class="row-btn"><button onclick="setTab('instellingen')">Naar instellingen</button></div>`;
+}
+function rVandaag(){
+  const el=$('#tab-vandaag');if(!S.csv)return emptyState(el);
+  const C=compute(),A=advice(C),st=S.settings;
+  // headline: the one thing worth knowing today
+  let head,sub;
+  if(A.mult>1){head=`MSCI World staat ${pct(-A.dd,0,false)} onder de top. Deze maand ${A.mult}× inleggen.`;
+    sub=`<b>${eur(A.amount)}</b> naar IWDA${A.extra<st.monthly*(A.mult-1)?`. Je buffer laat maar ${eur(A.extra)} extra toe`:''}.`;}
+  else if(A.opps.length){const o=A.opps[0];head=`${o.name} staat ${pct(-o.drop,0,false)} onder de top, poorten in orde.`;
+    sub=C.etfShare<st.targetEtf/100?`Bijkoopkans, maar ETF's hebben voorrang. Enkel uit je buffer, als je wil.`:`Bijkoopkans voor je volgende inleg.`;}
+  else{head='Niets te doen vandaag.';sub=`Volgende inleg: <b>${eur(A.amount)}</b> naar ${esc(A.to)}.`;}
+
+  const sigs=[];
+  if(A.mult>1||A.opps.length)sigs.push({c:'var(--accent)',t:`Volgende inleg: ${eur(A.amount)} naar ${esc(A.to)}`,s:esc(A.why)});
+  for(const o of A.opps.slice(A.mult>1?0:1,2))sigs.push({c:'var(--pass)',t:`${esc(o.name)}: ${pct(-o.drop,0,false)} onder de top`,s:o.held?'Je hebt het al; poorten in orde.':'Op je watchlist; poorten in orde.'});
+  for(const r of A.over.slice(0,2))sigs.push({c:'var(--warn)',t:`${esc(r.sym)} weegt ${pct(r.w,1,false)}`,s:`Boven je plafond van ${st.capPct}%. Niet bijkopen tot het gewicht zakt.`});
+  const shown=sigs.slice(0,3);
+
+  const tgt=st.targetEtf;
+  el.innerHTML=`<div class="fade">
+  <p class="date">${dateLine()}</p>
+  <h1>${esc(head)}</h1>
+  <p class="sub">${sub}</p>
+  <div class="figs num">
+    <div class="fig"><div class="l">Waarde</div><div class="v">${eur(C.total)}</div><div class="d soft">${eur(C.total-C.netIn)} winst</div></div>
+    <div class="fig"><div class="l">Vandaag</div><div class="v ${cls(C.dayAbs)}">${sEur(C.dayAbs)}</div><div class="d ${cls(C.dayPct)}">${pct(C.dayPct,2)}</div></div>
+    <div class="fig"><div class="l">Dit jaar</div>${C.ytd?`<div class="v ${cls(C.ytd.r)}">${pct(C.ytd.r,1)}</div><div class="d ${cls(C.ytd.abs)}">${sEur(C.ytd.abs)}</div>`:`<div class="v faint">–</div><div class="d"><button class="link small" onclick="setTab('instellingen')">Stel startwaarde in</button></div>`}</div>
+  </div>
+  <div class="alloc">
+    <div class="row"><span>ETF ${pct(C.etfShare,0,false)}</span><span>Aandelen ${pct(1-C.etfShare,0,false)}</span></div>
+    <div class="bar" role="img" aria-label="ETF ${Math.round(C.etfShare*100)} procent, doel ${tgt} procent"><div class="etf" style="width:${(C.etfShare*100).toFixed(1)}%"></div><div class="tgt" style="left:calc(${tgt}% - 1px)"></div></div>
+    <div class="row"><span>Doel ${tgt}/${100-tgt}</span><span>${C.etfShare<tgt/100?'nog '+eur(C.stk*tgt/(100-tgt)-C.etf)+' ETF tot doel':'op of boven doel'}</span></div>
+  </div>
+  ${shown.length?`<h2>Signalen</h2>${shown.map(s=>`<div class="sig"><span class="dot" style="background:${s.c}"></span><div><div class="t">${s.t}</div><div class="s">${s.s}</div></div></div>`).join('')}`:''}
+  ${C.anyStatic?`<div class="note">Niet alle koersen zijn live. Posities zonder live koers tellen mee aan hun laatste aankoopprijs. ${S.settings.key?'Kalibreer ze bij Instellingen.':'Vul je Finnhub-sleutel in bij Instellingen.'}</div>`:''}
+  <p class="status" id="status">${esc(statusText)}</p>
+  <p class="faint small">Posities volgens BUX-export tot ${esc(S.csv.lastTx)}. Dit is een rekenhulp op basis van je eigen regels, geen beleggingsadvies.</p>
+  <div class="row-btn"><button class="ghost" onclick="refresh(true)">Koersen vernieuwen</button></div>
+  </div>`;
+}
+function verdDot(v){return`<span class="verd v-${v||'none'}" title="${{pass:'Slaagt',doubt:'Twijfel',fail:'Slaagt niet'}[v]||'Onbekend'}"></span>`;}
+function rPosities(){
+  const el=$('#tab-posities');if(!S.csv)return emptyState(el);
+  const C=compute(),cap=S.settings.capPct/100;
+  const block=(title,rows)=>rows.length?`<h2>${title}</h2><div class="list">${rows.map(r=>`
+    <div class="item"><div class="main">
+      <div class="nm">${r.type==='stock'?verdDot(r.verdict):''}${esc(r.sym)} <span class="faint" style="font-weight:400">${esc(r.name)}</span></div>
+      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>cap?` · <span class="flag">boven plafond</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="flag">geen live koers</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
+    </div><div class="rt num"><div class="v">${eur(r.value)}</div><div class="meta"><span class="${cls(r.day)}">${pct(r.day,1)}</span> · <span class="${cls(r.pl)}">${pct(r.pl,0)}</span></div></div></div>`).join('')}</div>`:'';
+  el.innerHTML=`<p class="date">${dateLine()}</p><h1>Posities</h1>
+  <p class="soft small">Rechts: vandaag · totaal t.o.v. aankoop. Bolletje: kwaliteitspoorten (groen slaagt, geel twijfel, rood slaagt niet).</p>
+  ${block('ETF’s',C.rows.filter(r=>r.type==='etf'))}
+  ${block('Aandelen',C.rows.filter(r=>r.type!=='etf'))}
+  <h2>Cash</h2><div class="list"><div class="item"><div class="main"><div class="nm">Beschikbaar bij BUX</div></div><div class="rt num"><div class="v">${eur(S.csv.cash,2)}</div></div></div></div>`;
+}
+function gateLine(sym){const g=gates(sym);if(!g)return`<div class="gates">Nog geen cijfers</div>`;
+  return`<div class="gates">${g.map(x=>`<span>${x.known?(x.ok?'✓':'✗'):'?'} ${x.n}</span>`).join('')}</div>`;}
+function verdSelect(sym){const v=S.verdict[sym]||'auto';
+  return`<select class="verdsel" aria-label="Oordeel ${esc(sym)}" onchange="setVerdict('${esc(sym)}',this.value)">${[['auto','Auto'],['pass','Slaagt'],['doubt','Twijfel'],['fail','Slaagt niet']].map(([k,l])=>`<option value="${k}"${k===v?' selected':''}>${l}</option>`).join('')}</select>`;}
+function setVerdict(sym,v){S.verdict[sym]=v;save();render();}
+function rWatch(){
+  const el=$('#tab-watchlist');
+  const held=S.csv?Object.keys(S.csv.positions).filter(id=>S.map[id]&&S.map[id].type==='stock').map(id=>({...S.map[id],name:S.csv.positions[id].name})):[];
+  const item=(sym,name,removable,ref)=>{const d=dropFromTop(ref||sym),v=verdictOf(sym);
+    return`<div class="item"><div class="main"><div class="nm">${verdDot(v)}${esc(sym)} <span class="faint" style="font-weight:400">${esc(name)}</span></div>
+      ${gateLine(ref||sym)}<div class="meta num">${d!=null?pct(d,0)+' t.o.v. 52-weken-top':'Geen koers'}</div></div>
+      <div class="rt">${verdSelect(sym)}${removable?`<div><button class="link small" onclick="removeWatch('${esc(sym)}')">Verwijder</button></div>`:''}</div></div>`;};
+  el.innerHTML=`<p class="date">${dateLine()}</p><h1>Watchlist</h1>
+  <p class="soft small">Poorten: winstgevend, positieve vrije kasstroom, ROIC ≥ 15%, schuld/eigen vermogen ≤ 1, omzetgroei ≥ 5%/jaar over 5 jaar. Auto beslist op basis van die cijfers; je kan het oordeel overschrijven.</p>
+  <h2>Kandidaten</h2><div class="list">${S.watch.length?S.watch.map(w=>item(w.sym,w.name,true)).join(''):'<div class="item soft">Nog geen kandidaten. Voeg er hieronder een toe.</div>'}</div>
+  <div class="addw"><input id="wSym" placeholder="Ticker (US)" autocapitalize="characters"><input id="wName" placeholder="Naam"><button onclick="addWatch()">Voeg toe</button></div>
+  <p class="faint small">Europese aandelen: gebruik hun Amerikaanse ADR-ticker (bv. SBGSY voor Schneider).</p>
+  ${held.length?`<h2>In je portefeuille</h2><div class="list">${held.map(m=>item(m.sym,m.name,false,m.proxy||m.sym)).join('')}</div>`:''}`;
+}
+function addWatch(){const s=$('#wSym').value.trim().toUpperCase(),n=$('#wName').value.trim()||s;
+  if(!s||S.watch.some(w=>w.sym===s))return;S.watch.push({sym:s,name:n});save();refresh();render();}
+function removeWatch(s){S.watch=S.watch.filter(w=>w.sym!==s);save();render();}
+
+function rSettings(){
+  const el=$('#tab-instellingen'),st=S.settings;
+  const unmapped=S.csv?Object.keys(S.csv.positions).filter(id=>!S.map[id]):[];
+  const eurAssets=S.csv?Object.keys(S.csv.positions).filter(id=>S.map[id]&&S.map[id].proxy):[];
+  const num=(k,l,step='1')=>`<div><label for="s-${k}">${l}</label><input id="s-${k}" type="number" inputmode="decimal" step="${step}" value="${st[k]??''}" onchange="setS('${k}',this.value)"></div>`;
+  el.innerHTML=`<p class="date">${dateLine()}</p><h1>Instellingen</h1>
+  <h2>Posities</h2>
+  <p class="soft small">${S.csv?`Laatste import: ${esc(S.csv.fileName||'BUX-export')}, transacties tot ${esc(S.csv.lastTx)}.`:'Nog geen export geladen.'} Exporteer in de BUX-app je transacties als CSV en laad ze hier, één keer per maand.</p>
+  <input type="file" id="csvIn" accept=".csv,text/csv">
+  <p id="csvMsg" class="small">${esc(csvMsg)}</p>
+
+  <h2>Finnhub-sleutel</h2>
+  <p class="soft small">Gratis aan te maken op finnhub.io (registreren, dan staat je API key op je dashboard). Hij blijft enkel op dit toestel.</p>
+  <input id="s-key" value="${esc(st.key)}" placeholder="Plak je API key" autocomplete="off" onchange="S.settings.key=this.value.trim();save();refresh(true)">
+
+  <h2>Je regels</h2>
+  <div class="grid2">
+    ${num('targetEtf','Doel ETF (%)')}${num('capPct','Plafond per aandeel (%)')}
+    ${num('monthly','Maandelijkse inleg (€)','50')}${num('buffer','Buffer voor extra inleg (€)','50')}
+    ${num('dip1','Dubbel bij daling vanaf (%)')}${num('mult1','Factor')}
+    ${num('dip2','Driedubbel bij daling vanaf (%)')}${num('mult2','Factor')}
+    ${num('oppDrop','Bijkoopkans bij daling vanaf (%)')}${num('minStockBuy','Minimum aankoop aandeel (€)','50')}
+  </div>
+
+  <h2>Rendement dit jaar</h2>
+  <p class="soft small">Vul de waarde van je portefeuille op 31 december in (bv. uit PDT met Timetravel). Stortingen van dit jaar haalt de app uit je export.</p>
+  <div class="grid2">${num('v0','Waarde op 31/12 (€)','0.01')}</div>
+
+  ${eurAssets.length?`<h2>Europese koersen kalibreren</h2>
+  <p class="soft small">Finnhub heeft Europese beurzen niet gratis. Deze posities volgen daarom een Amerikaanse tegenhanger. Vul één keer de huidige koers uit BUX in; daarna loopt hij vanzelf mee. Herkalibreer gerust als het afwijkt.</p>
+  <div class="list">${eurAssets.map(id=>{const m=S.map[id],c=S.calib[id];return`<div class="cal">
+    <div><div style="font-weight:600">${esc(m.sym)}</div><div class="faint small">volgt ${esc(m.proxy)}${c?' · '+esc(c.date):' · niet gekalibreerd'}</div></div>
+    <input type="number" inputmode="decimal" step="0.01" id="cal-${id}" placeholder="€ nu" value="${c?c.eur:''}">
+    <button class="ghost" onclick="calibrate('${id}')">Bewaar</button></div>`;}).join('')}</div>
+  <p id="calMsg" class="small"></p>`:''}
+
+  ${unmapped.length?`<h2>Onbekende posities</h2><p class="soft small">Deze ISIN's ken ik nog niet. Geef de US-ticker (of een US-tegenhanger) en het type.</p>
+  <div class="list">${unmapped.map(id=>`<div class="cal" style="grid-template-columns:1fr 90px 90px auto">
+    <div><div style="font-weight:600">${esc(S.csv.positions[id].name)}</div><div class="faint small">${esc(id)}</div></div>
+    <input id="um-s-${id}" placeholder="Ticker"><select id="um-t-${id}"><option value="stock">Aandeel</option><option value="etf">ETF</option></select>
+    <button class="ghost" onclick="mapIsin('${id}')">Bewaar</button></div>`).join('')}</div>`:''}
+
+  <h2>Reset</h2><button class="ghost" onclick="if(confirm('Alle gegevens op dit toestel wissen?')){localStorage.removeItem(KEY);S=load();render();}">Wis alles op dit toestel</button>
+  <p class="status" id="status">${esc(statusText)}</p>`;
+  $('#csvIn').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+    r.onload=()=>{try{importBux(r.result,f.name);csvMsg=`Geladen: ${Object.keys(S.csv.positions).length} posities, transacties tot ${S.csv.lastTx}.`;}
+      catch(err){csvMsg=err.message;}rSettings();refresh();};r.readAsText(f);};
+}
+function setS(k,v){S.settings[k]=v===''?null:parseFloat(v);if(k==='v0')S.settings.v0Year=today().getFullYear();save();}
+async function calibrate(id){
+  const v=parseFloat($('#cal-'+id).value),m=S.map[id],msg=$('#calMsg');
+  if(!v){msg.textContent='Vul eerst de koers in euro in.';return;}
+  if(!S.settings.key){msg.textContent='Vul eerst je Finnhub-sleutel in.';return;}
+  try{msg.textContent='Bezig…';const fx=await getFx(true);const j=await fh('quote?symbol='+m.proxy);
+    if(!j.c||!fx)throw new Error();S.cache.quotes[m.proxy]={c:j.c,pc:j.pc,dp:j.dp,at:Date.now()};
+    S.calib[id]={eur:v,proxyRef:j.c,fxRef:fx,date:today().toLocaleDateString('nl-BE')};save();msg.textContent=`${m.sym} gekalibreerd.`;rSettings();}
+  catch(e){msg.textContent=`Geen koers voor ${m.proxy} bij Finnhub. Deze positie blijft op de laatste aankoopprijs staan.`;}
+}
+function mapIsin(id){const s=$('#um-s-'+id).value.trim().toUpperCase(),t=$('#um-t-'+id).value;if(!s)return;
+  S.map[id]={sym:s,type:t,ccy:'USD'};save();refresh();rSettings();}
+
+/* ============ Start ============ */
+setTab(tab);
+refresh();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+</script>
+</body>
+</html>
