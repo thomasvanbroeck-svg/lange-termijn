@@ -85,6 +85,10 @@ p{margin:0 0 10px;overflow-wrap:anywhere}
 .gates span{white-space:nowrap}
 .item .rt{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .flag{color:var(--warn);font-size:.8rem}
+.why{font-size:.88rem;color:var(--ink);margin:2px 0 3px}
+.acts{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:2px}
+.acts button{white-space:nowrap}
+.acts .link[aria-pressed="true"]{color:var(--warn)}
 .note{background:var(--warn-soft);color:var(--ink);border-radius:12px;padding:12px 14px;font-size:.9rem;margin:14px 0}
 
 /* forms */
@@ -162,6 +166,27 @@ const DEFAULTS={
            SPOT:'doubt',BABA:'doubt',TSLA:'doubt',NRG:'fail',UMI:'fail',SNOW:'fail',RGTI:'fail'},
   watch:[{sym:'ASML',name:'ASML'},{sym:'SBGSY',name:'Schneider Electric'},{sym:'ATLKY',name:'Atlas Copco'},
          {sym:'V',name:'Visa'},{sym:'MELI',name:'MercadoLibre'}],
+  notes:{
+    TSM:'Nr. 1 chipproducent ter wereld, zit amper in IWDA.',
+    RMS:'Luxe met ijzersterke prijszetting, Europees.',
+    ASML:'Monopolie op EUV-lithografie, record Q3 2026. Duur: kopen bij een dip.',
+    ATLKY:'Zweedse industriële kwaliteit, hoge ROIC, weinig schuld.',
+    V:'Wereldwijd betaalnetwerk met enorme moat, geen big tech.',
+    SBGSY:'Elektrificatie en datacenters. ROIC rond de grens.',
+    MELI:'Groei 45%, maar marge 6,3% en stijgende schuld. Volgen, niet kopen.',
+    GOOG:'Kwaliteit in orde, maar overlapt met IWDA en zit boven plafond.',
+    MSFT:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
+    NVDA:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
+    META:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
+    SPOT:'Pas recent winstgevend, trackrecord nog te kort.',
+    BABA:'China- en governancerisico, kasstroom onder druk.',
+    TSLA:'Marges dalen, waardering hangt aan beloftes.',
+    NRG:'Hoge schuld.',
+    UMI:'Verliezen en afschrijvingen in batterijmaterialen.',
+    SNOW:'Nog geen boekhoudkundige winst.',
+    RGTI:'Speculatief, nog geen verdienmodel.'
+  },
+  focus:['TSM','RMS','ASML','ATLKY'],
   csv:null,
   cache:{quotes:{},metrics:{},fx:null}
 };
@@ -347,6 +372,12 @@ function advice(C){
   let to='IWDA',why='';
   if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`;}
   else if(opps.length&&amount>=st.minStockBuy){to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
+  else if(amount>=st.minStockBuy){
+    const cands=S.focus.filter(f=>verdictOf(f)!=='fail'&&!(held.find(h=>h.sym===f)&&held.find(h=>h.sym===f).w>=cap))
+      .map(f=>{const h=held.find(x=>x.sym===f);const m=Object.values(S.map).find(x=>x.sym===f);return{sym:f,d:dropFromTop(h?(m&&m.proxy)||f:f)??0};})
+      .sort((a,b)=>a.d-b.d);
+    if(cands.length){to=cands[0].sym;why=`Aandelen zitten onder hun doel. ${cands[0].sym} is een voorrangsnaam${cands[0].d<0?` en staat ${pct(-cands[0].d,0,false)} onder de top`:''}.`;}
+  }
   else why='Verhouding zit goed; ETF is de standaardkeuze.';
   return{dd,mult,extra,amount,to,why,opps,over};
 }
@@ -386,7 +417,7 @@ function rVandaag(){
 
   const sigs=[];
   if(A.mult>1||A.opps.length)sigs.push({c:'var(--accent)',t:`Volgende inleg: ${eur(A.amount)} naar ${esc(A.to)}`,s:esc(A.why)});
-  for(const o of A.opps.slice(A.mult>1?0:1,2))sigs.push({c:'var(--pass)',t:`${esc(o.name)}: ${pct(-o.drop,0,false)} onder de top`,s:o.held?'Je hebt het al; poorten in orde.':'Op je watchlist; poorten in orde.'});
+  for(const o of A.opps.slice(A.mult>1?0:1,2))sigs.push({c:'var(--pass)',t:`${esc(o.name)}: ${pct(-o.drop,0,false)} onder de top`,s:esc(S.notes[o.sym]||(o.held?'Je hebt het al; poorten in orde.':'Op je watchlist; poorten in orde.'))});
   for(const r of A.over.slice(0,2))sigs.push({c:'var(--warn)',t:`${esc(r.sym)} weegt ${pct(r.w,1,false)}`,s:`Boven je plafond van ${st.capPct}%. Niet bijkopen tot het gewicht zakt.`});
   const shown=sigs.slice(0,3);
 
@@ -406,7 +437,7 @@ function rVandaag(){
     <div class="row"><span>Doel ${tgt}/${100-tgt}</span><span>${C.etfShare<tgt/100?'nog '+eur(C.stk*tgt/(100-tgt)-C.etf)+' ETF tot doel':'op of boven doel'}</span></div>
   </div>
   ${shown.length?`<h2>Signalen</h2>${shown.map(s=>`<div class="sig"><span class="dot" style="background:${s.c}"></span><div><div class="t">${s.t}</div><div class="s">${s.s}</div></div></div>`).join('')}`:''}
-  ${C.anyStatic?`<div class="note">Niet alle koersen zijn live. Posities zonder live koers tellen mee aan hun laatste aankoopprijs. ${S.settings.key?'Kalibreer ze bij Instellingen.':'Vul je Finnhub-sleutel in bij Instellingen.'}</div>`:''}
+  ${!S.settings.key?`<div class="note">Vul je Finnhub-sleutel in bij Instellingen om koersen op te halen.</div>`:''}
   <p class="status" id="status">${esc(statusText)}</p>
   <p class="faint small">Posities volgens BUX-export tot ${esc(S.csv.lastTx)}. Dit is een rekenhulp op basis van je eigen regels, geen beleggingsadvies.</p>
   <div class="row-btn"><button class="ghost" onclick="refresh(true)">Koersen vernieuwen</button></div>
@@ -419,7 +450,7 @@ function rPosities(){
   const block=(title,rows)=>rows.length?`<h2>${title}</h2><div class="list">${rows.map(r=>`
     <div class="item"><div class="main">
       <div class="nm">${r.type==='stock'?verdDot(r.verdict):''}${esc(r.sym)} <span class="faint" style="font-weight:400">${esc(r.name)}</span></div>
-      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>cap?` · <span class="flag">boven plafond</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="flag">geen live koers</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
+      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>cap?` · <span class="flag">boven plafond</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
     </div><div class="rt num"><div class="v">${eur(r.value)}</div><div class="meta"><span class="${cls(r.day)}">${pct(r.day,1)}</span> · <span class="${cls(r.pl)}">${pct(r.pl,0)}</span></div></div></div>`).join('')}</div>`:'';
   el.innerHTML=`<p class="date">${dateLine()}</p><h1>Posities</h1>
   <p class="soft small">Rechts: vandaag · totaal t.o.v. aankoop. Bolletje: kwaliteitspoorten (groen slaagt, geel twijfel, rood slaagt niet).</p>
@@ -432,15 +463,20 @@ function gateLine(sym){const g=gates(sym);if(!g)return`<div class="gates">Nog ge
 function verdSelect(sym){const v=S.verdict[sym]||'auto';
   return`<select class="verdsel" aria-label="Oordeel ${esc(sym)}" onchange="setVerdict('${esc(sym)}',this.value)">${[['auto','Auto'],['pass','Slaagt'],['doubt','Twijfel'],['fail','Slaagt niet']].map(([k,l])=>`<option value="${k}"${k===v?' selected':''}>${l}</option>`).join('')}</select>`;}
 function setVerdict(sym,v){S.verdict[sym]=v;save();render();}
+function toggleFocus(sym){S.focus=S.focus.includes(sym)?S.focus.filter(f=>f!==sym):[...S.focus,sym];save();render();}
+function editNote(sym){const v=prompt('Waarom staat '+sym+' op je lijst?',S.notes[sym]||'');if(v===null)return;S.notes[sym]=v.trim();save();render();}
 function rWatch(){
   const el=$('#tab-watchlist');
   const held=S.csv?Object.keys(S.csv.positions).filter(id=>S.map[id]&&S.map[id].type==='stock').map(id=>({...S.map[id],name:S.csv.positions[id].name})):[];
   const item=(sym,name,removable,ref)=>{const d=dropFromTop(ref||sym),v=verdictOf(sym);
+    const f=S.focus.includes(sym);
     return`<div class="item"><div class="main"><div class="nm">${verdDot(v)}${esc(sym)} <span class="faint" style="font-weight:400">${esc(name)}</span></div>
-      ${gateLine(ref||sym)}<div class="meta num">${d!=null?pct(d,0)+' t.o.v. 52-weken-top':'Geen koers'}</div></div>
+      ${S.notes[sym]?`<div class="why">${esc(S.notes[sym])}</div>`:''}
+      ${gateLine(ref||sym)}<div class="meta num">${d!=null?pct(d,0)+' t.o.v. 52-weken-top':'Geen koers'}</div>
+      <div class="acts"><button class="link small" onclick="toggleFocus('${esc(sym)}')" aria-pressed="${f}">${f?'★ Voorrang':'☆ Geef voorrang'}</button><button class="link small" onclick="editNote('${esc(sym)}')">${S.notes[sym]?'Wijzig waarom':'Voeg waarom toe'}</button></div></div>
       <div class="rt">${verdSelect(sym)}${removable?`<div><button class="link small" onclick="removeWatch('${esc(sym)}')">Verwijder</button></div>`:''}</div></div>`;};
   el.innerHTML=`<p class="date">${dateLine()}</p><h1>Watchlist</h1>
-  <p class="soft small">Poorten: winstgevend, positieve vrije kasstroom, ROIC ≥ 15%, schuld/eigen vermogen ≤ 1, omzetgroei ≥ 5%/jaar over 5 jaar. Auto beslist op basis van die cijfers; je kan het oordeel overschrijven.</p>
+  <p class="soft small">★ Voorrang: hier gaat je aandelengeld eerst naartoe als er geen bijkoopkans is. Poorten: winstgevend, positieve vrije kasstroom, ROIC ≥ 15%, schuld/eigen vermogen ≤ 1, omzetgroei ≥ 5%/jaar over 5 jaar. Auto beslist op basis van die cijfers; je kan het oordeel overschrijven.</p>
   <h2>Kandidaten</h2><div class="list">${S.watch.length?S.watch.map(w=>item(w.sym,w.name,true)).join(''):'<div class="item soft">Nog geen kandidaten. Voeg er hieronder een toe.</div>'}</div>
   <div class="addw"><input id="wSym" placeholder="Ticker (US)" autocapitalize="characters"><input id="wName" placeholder="Naam"><button onclick="addWatch()">Voeg toe</button></div>
   <p class="faint small">Europese aandelen: gebruik hun Amerikaanse ADR-ticker (bv. SBGSY voor Schneider).</p>
@@ -505,7 +541,7 @@ async function saveKey(){
   if(!v){keyMsg='Plak eerst je API key.';rSettings();return;}
   S.settings.key=v;save();keyMsg='Sleutel bewaard. Bezig met testen…';rSettings();
   try{const j=await fh('quote?symbol=AAPL');keyMsg=j&&j.c?'Sleutel bewaard en werkt. Koersen worden opgehaald.':'Sleutel bewaard, maar Finnhub gaf geen koers terug.';}
-  catch(e){keyMsg=e.message==='auth'?'Finnhub weigert deze sleutel. Controleer of je enkel de API key plakte (20 tekens).':'Sleutel bewaard. Finnhub was niet bereikbaar; probeer later opnieuw.';}
+  catch(e){keyMsg=e.message==='auth'?'Finnhub weigert deze sleutel. Controleer of je de volledige API key plakte, zonder spaties.':'Sleutel bewaard. Finnhub was niet bereikbaar; probeer later opnieuw.';}
   rSettings();refresh(true);
 }
 function setS(k,v){S.settings[k]=v===''?null:parseFloat(v);if(k==='v0')S.settings.v0Year=today().getFullYear();save();}
