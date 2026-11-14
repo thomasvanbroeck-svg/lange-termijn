@@ -88,6 +88,7 @@ p{margin:0 0 10px;overflow-wrap:anywhere}
 .sp{margin:0 0 8px}.sp-l{display:flex;justify-content:space-between;font-size:.82rem}
 .sp-b{height:6px;border-radius:3px;background:var(--line);margin-top:3px}.sp-b i{display:block;height:100%;border-radius:3px;background:var(--accent)}
 .spread{gap:0 18px}
+.row{display:flex;justify-content:space-between;gap:10px}
 .why{font-size:.88rem;color:var(--ink);margin:2px 0 3px}
 .acts{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:2px}
 .acts button{white-space:nowrap}
@@ -142,7 +143,7 @@ nav button[aria-current="page"]{color:var(--accent);box-shadow:inset 0 2px 0 var
 /* ============ State ============ */
 const KEY='langeTermijn.v1';
 const DEFAULTS={
-  settings:{key:'',targetEtf:70,capPct:8,capSector:35,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
+  settings:{key:'',targetEtf:70,capPct:8,capWeak:1,capSector:35,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
   // ISIN -> how to price it. EUR-listed assets follow a US-listed proxy after a one-time calibration.
   map:{
     'IE00B4L5Y983':{sym:'IWDA',type:'etf',ccy:'EUR',proxy:'URTH'},
@@ -166,7 +167,7 @@ const DEFAULTS={
   calib:{},
   // Starting verdicts from the first screening; "auto" lets the gates decide.
   verdict:{GOOG:'pass',MSFT:'pass',NVDA:'pass',META:'pass',TSM:'pass',RMS:'pass',
-           SPOT:'doubt',BABA:'doubt',TSLA:'doubt',NRG:'fail',UMI:'fail',SNOW:'fail',RGTI:'fail'},
+           SPOT:'pass',UMI:'doubt',BABA:'doubt',TSLA:'doubt',NRG:'fail',SNOW:'fail',RGTI:'fail'},
   watch:[{sym:'ASML',name:'ASML'},{sym:'SBGSY',name:'Schneider Electric'},{sym:'ATLKY',name:'Atlas Copco'},
          {sym:'V',name:'Visa'},{sym:'MELI',name:'MercadoLibre'}],
   notes:{
@@ -181,11 +182,11 @@ const DEFAULTS={
     MSFT:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
     NVDA:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
     META:'Kwaliteit in orde, overlapt sterk met IWDA. Enkel bij diepe dip.',
-    SPOT:'Pas recent winstgevend, trackrecord nog te kort.',
+    SPOT:'Derde volle winstjaar, €9,9 mld cash en geen schuld. Europese kwaliteitsgroeier.',
     BABA:'China- en governancerisico, kasstroom onder druk.',
     TSLA:'Marges dalen, waardering hangt aan beloftes.',
     NRG:'Hoge schuld.',
-    UMI:'Verliezen en afschrijvingen in batterijmaterialen.',
+    UMI:'Ommekeer: winst verdubbeld en ROCE 23% (H1 2026), maar batterijtak blijft zwak en metaalprijzen wegen.',
     SNOW:'Nog geen boekhoudkundige winst.',
     RGTI:'Speculatief, nog geen verdienmodel.'
   },
@@ -200,10 +201,21 @@ const DEFAULTS={
     ATLKY:{r:'Europa',s:'Industrie'},SBGSY:{r:'Europa',s:'Industrie'},V:{r:'Noord-Amerika',s:'Financieel'}
   },
   thesis:{},
+  snaps:{},
+  backupAt:null,
   csv:null,
   cache:{quotes:{},metrics:{},fx:null,earnings:{},profiles:{}}
 };
 let S=load();
+// one-time update of verdicts after the November 2026 review
+function migrate(){if(!S.v||S.v<2){
+  if(S.verdict.SPOT==='doubt')S.verdict.SPOT='pass';
+  if(S.verdict.UMI==='fail')S.verdict.UMI='doubt';
+  if(!S.notes.SPOT||S.notes.SPOT.startsWith('Pas recent'))S.notes.SPOT=DEFAULTS.notes.SPOT;
+  if(!S.notes.UMI||S.notes.UMI.startsWith('Verliezen'))S.notes.UMI=DEFAULTS.notes.UMI;
+  S.v=2;try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+}}
+migrate();
 function load(){
   try{const s=JSON.parse(localStorage.getItem(KEY));if(s){return deepMerge(structuredClone(DEFAULTS),s);}}catch(e){}
   return structuredClone(DEFAULTS);
@@ -315,12 +327,13 @@ async function refresh(force=false){
       }catch(e){fails++;if(e.message==='auth'){authErr=true;break;}if(e.message==='limit'){await sleep(5000);}}
       await sleep(150);
     }
+    takeSnapshot();
     save();
     status(authErr?'Finnhub weigert de sleutel. Controleer hem bij Instellingen.':
       'Bijgewerkt om '+new Date().toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'})+(fails?` · ${fails} koers(en) niet beschikbaar`:''));
   }finally{busy=false;render();if(again){again=false;refresh();}}
 }
-let statusText='',csvMsg='',keyMsg='';
+let statusText='',csvMsg='',keyMsg='',bkMsg='';
 function status(t){statusText=t;const el=$('#status');if(el)el.textContent=t;}
 
 /* ============ Valuation ============ */
@@ -355,6 +368,17 @@ function spread(C){
   for(const r of st){const m=metaOf(r.sym);R[m.r]=(R[m.r]||0)+r.value/tot;Sx[m.s]=(Sx[m.s]||0)+r.value/tot;}
   const sort=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]);
   return{regions:sort(R),sectors:sort(Sx),sectorShare:Sx};
+}
+function takeSnapshot(){
+  if(!S.csv)return;const C=compute();if(!C||!C.total)return;
+  S.snaps[isoToday()]={v:Math.round(C.total),n:Math.round(C.netIn)};
+}
+function startValue(){
+  const st=S.settings,yr=today().getFullYear();
+  if(st.v0&&st.v0Year===yr)return{v:st.v0,src:'manual'};
+  const prevEnd=`${yr-1}-12-31`,minD=`${yr-1}-12-15`;
+  const d=Object.keys(S.snaps).filter(k=>k<=prevEnd&&k>=minD).sort().pop();
+  return d?{v:S.snaps[d].v,src:'auto',date:d}:null;
 }
 function metricFor(sym){const c=S.cache.metrics[sym];return c?c.d:null;}
 function gates(sym){
@@ -396,10 +420,11 @@ function compute(){
   rows.sort((a,b)=>b.value-a.value);
   // YTD (modified Dietz) from the value at 31/12 and this year's deposits
   let ytd=null;const st=S.settings;const yr=today().getFullYear();
-  if(st.v0&&st.v0Year===yr){
+  const sv=startValue();
+  if(sv){const v0=sv.v;
     const start=new Date(yr,0,1),end=today(),T=(end-start)/864e5;
     let F=0,W=0;for(const f of S.csv.flows){const d=new Date(f.date);if(d>=start&&d<=end){F+=f.amount;W+=f.amount*((end-d)/864e5)/T;}}
-    ytd={r:(total-st.v0-F)/(st.v0+W),abs:total-st.v0-F};
+    ytd={r:(total-v0-F)/(v0+W),abs:total-v0-F,src:sv.src};
   }
   const netIn=S.csv.flows.reduce((a,f)=>a+f.amount,0);
   return{rows,etf,stk,invested,total,dayAbs,dayPct:total?dayAbs/(total-dayAbs):0,ytd,netIn,anyStatic,
@@ -495,6 +520,7 @@ function rVandaag(){
   </div>
   ${shown.length?`<h2>Signalen</h2>${shown.map(s=>`<div class="sig"><span class="dot" style="background:${s.c}"></span><div><div class="t">${s.t}</div><div class="s">${s.s}</div></div></div>`).join('')}`:''}
   ${!S.settings.key?`<div class="note">Vul je Finnhub-sleutel in bij Instellingen om koersen op te halen.</div>`:''}
+  ${S.settings.key&&(!S.backupAt||Date.now()-new Date(S.backupAt)>90*864e5)?`<p class="soft small" style="margin-top:18px">${S.backupAt?'Je laatste back-up is ouder dan 3 maanden.':'Je hebt nog geen back-up van je notities en oordelen.'} <button class="link small" onclick="setTab('instellingen')">Back-up maken</button></p>`:''}
   ${pend.length||soon.length?`<h2>These-check</h2>
   ${pend.map(x=>`<div class="sig"><span class="dot" style="background:var(--accent)"></span><div style="flex:1">
     <div class="t">${esc(x.sym)} publiceerde cijfers op ${fmtDate(x.pending)}</div>
@@ -507,17 +533,33 @@ function rVandaag(){
   </div>`;
 }
 function verdDot(v){return`<span class="verd v-${v||'none'}" title="${{pass:'Slaagt',doubt:'Twijfel',fail:'Slaagt niet'}[v]||'Onbekend'}"></span>`;}
+function historyChart(){
+  const ks=Object.keys(S.snaps).sort();
+  if(ks.length<2)return`<h2>Verloop</h2><p class="soft small">Vanaf nu bewaart de app elke dag je waarde. Na een paar dagen verschijnt hier je waarde tegenover je inleg.</p>`;
+  const W=340,H=120,pad=4,pts=ks.map(k=>S.snaps[k]),max=Math.max(...pts.map(p=>Math.max(p.v,p.n))),min=Math.min(...pts.map(p=>Math.min(p.v,p.n)))*0.95;
+  const t0=new Date(ks[0]),t1=new Date(ks.at(-1)),span=Math.max(1,t1-t0);
+  const x=k=>pad+(new Date(k)-t0)/span*(W-2*pad),y=v=>H-pad-(v-min)/(max-min||1)*(H-2*pad);
+  const line=f=>ks.map((k,i)=>(i?'L':'M')+x(k).toFixed(1)+','+y(f(S.snaps[k])).toFixed(1)).join('');
+  const last=pts.at(-1);
+  return`<h2>Verloop</h2>
+  <div class="row small"><span><b style="color:var(--accent)">━</b> Waarde ${eur(last.v)}</span><span class="soft"><b style="color:var(--ink-faint)">┅</b> Ingelegd ${eur(last.n)}</span></div>
+  <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Waarde ${eur(last.v)} tegenover ingelegd ${eur(last.n)}" style="margin-top:6px">
+    <path d="${line(p=>p.n)}" fill="none" stroke="var(--ink-faint)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <path d="${line(p=>p.v)}" fill="none" stroke="var(--accent)" stroke-width="2"/></svg>
+  <div class="row small faint"><span>${fmtDate(ks[0])}</span><span>${fmtDate(ks.at(-1))}</span></div>`;
+}
 function rPosities(){
   const el=$('#tab-posities');if(!S.csv)return emptyState(el);
-  const C=compute(),cap=S.settings.capPct/100;
+  const C=compute(),cap=S.settings.capPct/100,capW=(S.settings.capWeak??1)/100;
   const block=(title,rows)=>rows.length?`<h2>${title}</h2><div class="list">${rows.map(r=>`
     <div class="item"><div class="main">
       <div class="nm">${r.type==='stock'?verdDot(r.verdict):''}${esc(r.sym)} <span class="faint" style="font-weight:400">${esc(r.name)}</span></div>
-      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>cap?` · <span class="flag">boven plafond</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
+      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>(r.verdict==='fail'?capW:cap)?` · <span class="flag">boven ${r.verdict==='fail'?'plafond zwakke naam':'plafond'}</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
     </div><div class="rt num"><div class="v">${eur(r.value)}</div><div class="meta"><span class="${cls(r.day)}">${pct(r.day,1)}</span> · <span class="${cls(r.pl)}">${pct(r.pl,0)}</span></div></div></div>`).join('')}</div>`:'';
   const SP=spread(C),capS=(S.settings.capSector||100)/100;
   const bars=(list,capped)=>list.map(([k,v])=>`<div class="sp"><div class="sp-l"><span>${esc(k)}</span><span class="num ${capped&&v>capS?'flag':''}">${pct(v,0,false)}</span></div><div class="sp-b"><i style="width:${(v*100).toFixed(1)}%;${capped&&v>capS?'background:var(--warn)':''}"></i></div></div>`).join('');
   el.innerHTML=`<p class="date">${dateLine()}</p><h1>Posities</h1>
+  ${historyChart()}
   <h2>Spreiding van je aandelen</h2>
   <div class="grid2 spread"><div><p class="soft small">Regio</p>${bars(SP.regions,false)}</div><div><p class="soft small">Sector (plafond ${S.settings.capSector}%)</p>${bars(SP.sectors,true)}</div></div>
   <p class="soft small">Rechts: vandaag · totaal t.o.v. aankoop. Bolletje: kwaliteitspoorten (groen slaagt, geel twijfel, rood slaagt niet).</p>
@@ -576,7 +618,7 @@ function rSettings(){
   <h2>Je regels</h2>
   <div class="grid2">
     ${num('targetEtf','Doel ETF (%)')}${num('capPct','Plafond per aandeel (%)')}
-    ${num('capSector','Plafond per sector in aandelen (%)')}<div></div>
+    ${num('capSector','Plafond per sector in aandelen (%)')}${num('capWeak','Plafond voor “slaagt niet” (%)','0.5')}
     ${num('monthly','Maandelijkse inleg (€)','50')}${num('buffer','Buffer voor extra inleg (€)','50')}
     ${num('dip1','Dubbel bij daling vanaf (%)')}${num('mult1','Factor')}
     ${num('dip2','Driedubbel bij daling vanaf (%)')}${num('mult2','Factor')}
@@ -584,7 +626,7 @@ function rSettings(){
   </div>
 
   <h2>Rendement dit jaar</h2>
-  <p class="soft small">Vul de waarde van je portefeuille op 31 december in (bv. uit PDT met Timetravel). Stortingen van dit jaar haalt de app uit je export.</p>
+  <p class="soft small">${(()=>{const sv=startValue();return sv&&sv.src==='auto'?`Automatisch: je waarde van ${fmtDate(sv.date)} (${eur(sv.v)}). Je hoeft niets in te vullen.`:'Vul de waarde van je portefeuille op 31 december in (bv. uit PDT met Timetravel). Vanaf volgend jaar neemt de app die zelf.';})()} Stortingen van dit jaar haalt de app uit je export.</p>
   <div class="grid2">${num('v0','Waarde op 31/12 (€)','0.01')}</div>
 
   ${eurAssets.length?`<h2>Europese koersen kalibreren</h2>
@@ -601,8 +643,16 @@ function rSettings(){
     <input id="um-s-${id}" placeholder="Ticker"><select id="um-t-${id}"><option value="stock">Aandeel</option><option value="etf">ETF</option></select>
     <button class="ghost" onclick="mapIsin('${id}')">Bewaar</button></div>`).join('')}</div>`:''}
 
+  <h2>Back-up</h2>
+  <p class="soft small">Je oordelen, notities, these-checks en waardegeschiedenis staan enkel in deze browser. Maak af en toe een back-up en bewaar het bestand op een veilige plek (bv. Google Drive). ${S.backupAt?'Laatste back-up: '+esc(new Date(S.backupAt).toLocaleDateString('nl-BE'))+'.':'Nog geen back-up gemaakt.'}</p>
+  <div class="row-btn"><button onclick="backup()">Back-up maken</button><button class="ghost" onclick="$('#restoreIn').click()">Terugzetten</button></div>
+  <input type="file" id="restoreIn" accept=".json,application/json" hidden>
+  <p class="small" id="bkMsg">${esc(bkMsg)}</p>
+
   <h2>Reset</h2><button class="ghost" onclick="if(confirm('Alle gegevens op dit toestel wissen?')){localStorage.removeItem(KEY);S=load();render();}">Wis alles op dit toestel</button>
   <p class="status" id="status">${esc(statusText)}</p>`;
+  $('#restoreIn').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+    r.onload=()=>{try{if(!confirm('Je huidige gegevens op dit toestel vervangen door deze back-up?'))return;restore(r.result);}catch(err){bkMsg=err.message||'Kon de back-up niet lezen.';rSettings();}};r.readAsText(f);};
   $('#csvIn').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
     r.onload=()=>{try{importBux(r.result,f.name);csvMsg=`Geladen: ${Object.keys(S.csv.positions).length} posities, transacties tot ${S.csv.lastTx}.`;}
       catch(err){csvMsg=err.message;}rSettings();refresh();};r.readAsText(f);};
@@ -614,6 +664,18 @@ async function saveKey(){
   try{const j=await fh('quote?symbol=AAPL');keyMsg=j&&j.c?'Sleutel bewaard en werkt. Koersen worden opgehaald.':'Sleutel bewaard, maar Finnhub gaf geen koers terug.';}
   catch(e){keyMsg=e.message==='auth'?'Finnhub weigert deze sleutel. Controleer of je de volledige API key plakte, zonder spaties.':'Sleutel bewaard. Finnhub was niet bereikbaar; probeer later opnieuw.';}
   rSettings();refresh(true);
+}
+function backup(){
+  const data=structuredClone(S);delete data.cache;
+  const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`lange-termijn-backup-${isoToday()}.json`;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  S.backupAt=new Date().toISOString();save();bkMsg='Back-up gedownload. Bewaar het bestand op een veilige plek; het bevat ook je Finnhub-sleutel.';rSettings();
+}
+function restore(text){
+  const d=JSON.parse(text);if(!d||typeof d!=='object'||!d.settings)throw new Error('Dit is geen back-up van deze app.');
+  const cache=S.cache;S=deepMerge(structuredClone(DEFAULTS),d);S.cache=cache;migrate();save();
+  bkMsg='Back-up teruggezet.';refresh(true);rSettings();
 }
 function setS(k,v){S.settings[k]=v===''?null:parseFloat(v);if(k==='v0')S.settings.v0Year=today().getFullYear();save();}
 async function calibrate(id){
