@@ -143,13 +143,14 @@ nav button[aria-current="page"]{color:var(--accent);box-shadow:inset 0 2px 0 var
 /* ============ State ============ */
 const KEY='langeTermijn.v1';
 const DEFAULTS={
-  settings:{key:'',targetEtf:70,capPct:8,capWeak:1,capSector:35,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
+  settings:{key:'',targetEtf:70,mix:{IWDA:75,MSE:15,EMIM:10},capPct:8,capWeak:1,capSector:35,monthly:600,buffer:1200,dip1:10,mult1:2,dip2:20,mult2:3,oppDrop:15,minStockBuy:500,v0:null,v0Year:new Date().getFullYear(),fxManual:null},
   // ISIN -> how to price it. EUR-listed assets follow a US-listed proxy after a one-time calibration.
   map:{
     'IE00B4L5Y983':{sym:'IWDA',type:'etf',ccy:'EUR',proxy:'URTH'},
     'IE0031442068':{sym:'IUSA',type:'etf',ccy:'EUR',proxy:'SPY'},
     'IE00B5BMR087':{sym:'CSPX',type:'etf',ccy:'EUR',proxy:'SPY'},
     'FR0007054358':{sym:'MSE',type:'etf',ccy:'EUR',proxy:'FEZ'},
+    'IE00BKM4GZ66':{sym:'EMIM',type:'etf',ccy:'EUR',proxy:'IEMG'},
     'BE0974320526':{sym:'UMI',type:'stock',ccy:'EUR',proxy:'UMICY'},
     'FR0000052292':{sym:'RMS',type:'stock',ccy:'EUR',proxy:'HESAY'},
     'US02079K1079':{sym:'GOOG',type:'stock',ccy:'USD'},
@@ -430,6 +431,14 @@ function compute(){
   return{rows,etf,stk,invested,total,dayAbs,dayPct:total?dayAbs/(total-dayAbs):0,ytd,netIn,anyStatic,
     etfShare:invested?etf/invested:0};
 }
+// Which ETF gets this month's money: the one furthest below its share of the ETF mix.
+function etfPick(C,amount){
+  const mix=S.settings.mix||{IWDA:100},keys=Object.keys(mix).filter(k=>mix[k]>0),tot=keys.reduce((a,k)=>a+mix[k],0)||1;
+  const val=k=>C.rows.filter(r=>r.sym===k).reduce((a,r)=>a+r.value,0);
+  const sum=keys.reduce((a,k)=>a+val(k),0),after=sum+amount;
+  const gaps=keys.map(k=>({k,share:sum?val(k)/sum:0,target:mix[k]/tot,gap:mix[k]/tot*after-val(k)})).sort((a,b)=>b.gap-a.gap);
+  return{to:gaps[0]?gaps[0].k:'IWDA',gaps};
+}
 function advice(C){
   const st=S.settings,dd=dropFromTop('URTH');
   let mult=1;if(dd!=null){if(dd<=-st.dip2/100)mult=st.mult2;else if(dd<=-st.dip1/100)mult=st.mult1;}
@@ -445,8 +454,10 @@ function advice(C){
   const over=held.filter(r=>r.w>cap).sort((a,b)=>b.w-a.w);
   const SP=spread(C),sCap=(st.capSector||100)/100,sectorFull=sym=>(SP.sectorShare[metaOf(sym).s]||0)>=sCap;
   const fullSectors=SP.sectors.filter(([,v])=>v>sCap);
-  let to='IWDA',why='';
-  if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`;}
+  const EP=etfPick(C,amount),g0=EP.gaps[0];
+  let to=EP.to,why='';
+  const mixWhy=g0?` Binnen je ETF's staat ${g0.k} op ${pct(g0.share,0,false)} (doel ${pct(g0.target,0,false)}).`:'';
+  if(C.etfShare<tgt){why=`ETF's staan op ${pct(C.etfShare,0,false)}, doel ${st.targetEtf}%.`+mixWhy;}
   else if(opps.some(o=>!sectorFull(o.sym))&&amount>=st.minStockBuy){const o0=opps.find(o=>!sectorFull(o.sym));opps.splice(opps.indexOf(o0),1);opps.unshift(o0);to=opps[0].sym;why=`Aandelen zitten onder hun doel en ${opps[0].sym} staat ${pct(-opps[0].drop,0,false)} onder de top.`;}
   else if(amount>=st.minStockBuy){
     const proxyOf=f=>{const m=Object.values(S.map).find(x=>x.sym===f);return m&&m.proxy||f;};
@@ -455,8 +466,8 @@ function advice(C){
       .sort((a,b)=>a.d-b.d);
     if(cands.length){to=cands[0].sym;why=`Aandelen zitten onder hun doel. ${cands[0].sym} is een voorrangsnaam${cands[0].d<0?` en staat ${pct(-cands[0].d,0,false)} onder de top`:''}.`;}
   }
-  else why='Verhouding zit goed; ETF is de standaardkeuze.';
-  return{dd,mult,extra,amount,to,why,opps,over,fullSectors,sectorFull};
+  else why='Verhouding zit goed; ETF is de standaardkeuze.'+mixWhy;
+  return{dd,mult,extra,amount,to,why,opps,over,fullSectors,sectorFull,etf:EP};
 }
 
 /* ============ Render ============ */
@@ -487,7 +498,7 @@ function rVandaag(){
   // headline: the one thing worth knowing today
   let head,sub;
   if(A.mult>1){head=`MSCI World staat ${pct(-A.dd,0,false)} onder de top. Deze maand ${A.mult}× inleggen.`;
-    sub=`<b>${eur(A.amount)}</b> naar IWDA${A.extra<st.monthly*(A.mult-1)?`. Je buffer laat maar ${eur(A.extra)} extra toe`:''}.`;}
+    sub=`<b>${eur(A.amount)}</b> naar ${esc(A.etf.to)}${A.extra<st.monthly*(A.mult-1)?`. Je buffer laat maar ${eur(A.extra)} extra toe`:''}.`;}
   else if(A.opps.length){const o=A.opps[0];head=`${o.name} staat ${pct(-o.drop,0,false)} onder de top, poorten in orde.`;
     sub=C.etfShare<st.targetEtf/100?`Bijkoopkans, maar ETF's hebben voorrang. Enkel uit je buffer, als je wil.`:`Bijkoopkans voor je volgende inleg.`;}
   else{head='Niets te doen vandaag.';sub=`Volgende inleg: <b>${eur(A.amount)}</b> naar ${esc(A.to)}.`;}
@@ -554,7 +565,7 @@ function rPosities(){
   const block=(title,rows)=>rows.length?`<h2>${title}</h2><div class="list">${rows.map(r=>`
     <div class="item"><div class="main">
       <div class="nm">${r.type==='stock'?verdDot(r.verdict):''}${esc(r.sym)} <span class="faint" style="font-weight:400">${esc(r.name)}</span></div>
-      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>(r.verdict==='fail'?capW:cap)?` · <span class="flag">boven ${r.verdict==='fail'?'plafond zwakke naam':'plafond'}</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}</div>
+      <div class="meta num">${pct(r.w,1,false)} van totaal${r.type==='stock'&&r.w>(r.verdict==='fail'?capW:cap)?` · <span class="flag">boven ${r.verdict==='fail'?'plafond zwakke naam':'plafond'}</span>`:''}${r.drop!=null?` · ${pct(r.drop,0)} t.o.v. top`:''}${!r.live?` · <span class="faint">laatste aankoopprijs</span>`:''}${!r.mapped?` · <span class="flag">onbekend ISIN</span>`:''}${r.type==='etf'&&!(S.settings.mix||{})[r.sym]?` · <span class="faint">niet meer bijkopen</span>`:''}</div>
     </div><div class="rt num"><div class="v">${eur(r.value)}</div><div class="meta"><span class="${cls(r.day)}">${pct(r.day,1)}</span> · <span class="${cls(r.pl)}">${pct(r.pl,0)}</span></div></div></div>`).join('')}</div>`:'';
   const SP=spread(C),capS=(S.settings.capSector||100)/100;
   const bars=(list,capped)=>list.map(([k,v])=>`<div class="sp"><div class="sp-l"><span>${esc(k)}</span><span class="num ${capped&&v>capS?'flag':''}">${pct(v,0,false)}</span></div><div class="sp-b"><i style="width:${(v*100).toFixed(1)}%;${capped&&v>capS?'background:var(--warn)':''}"></i></div></div>`).join('');
@@ -563,6 +574,7 @@ function rPosities(){
   <h2>Spreiding van je aandelen</h2>
   <div class="grid2 spread"><div><p class="soft small">Regio</p>${bars(SP.regions,false)}</div><div><p class="soft small">Sector (plafond ${S.settings.capSector}%)</p>${bars(SP.sectors,true)}</div></div>
   <p class="soft small">Rechts: vandaag · totaal t.o.v. aankoop. Bolletje: kwaliteitspoorten (groen slaagt, geel twijfel, rood slaagt niet).</p>
+  ${(()=>{const EP=etfPick(C,0);return`<h2>ETF-verdeling</h2>${EP.gaps.sort((a,b)=>b.target-a.target).map(g=>`<div class="sp"><div class="sp-l"><span>${esc(g.k)}</span><span class="num">${pct(g.share,0,false)} <span class="faint">/ doel ${pct(g.target,0,false)}</span></span></div><div class="sp-b" style="position:relative"><i style="width:${(g.share*100).toFixed(1)}%"></i><span style="position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);left:calc(${(g.target*100).toFixed(1)}% - 1px)"></span></div></div>`).join('')}<p class="faint small">Percentages binnen de ETF's uit je verdeling. Je maandinleg gaat naar de ETF die het verst onder zijn doel zit.</p>`;})()}
   ${block('ETF’s',C.rows.filter(r=>r.type==='etf'))}
   ${block('Aandelen',C.rows.filter(r=>r.type!=='etf'))}
   <h2>Cash</h2><div class="list"><div class="item"><div class="main"><div class="nm">Beschikbaar bij BUX</div></div><div class="rt num"><div class="v">${eur(S.csv.cash,2)}</div></div></div></div>`;
@@ -625,6 +637,10 @@ function rSettings(){
     ${num('oppDrop','Bijkoopkans bij daling vanaf (%)')}${num('minStockBuy','Minimum aankoop aandeel (€)','50')}
   </div>
 
+  <h2>ETF-verdeling</h2>
+  <p class="soft small">Hoe je ETF-inleg verdeeld wordt (moet niet exact 100 zijn, de app rekent in verhouding). ETF's die hier niet staan, koop je niet meer bij.</p>
+  <div class="grid2">${Object.entries(st.mix||{}).map(([k,v])=>`<div><label for="mix-${esc(k)}">${esc(k)} (%)</label><input id="mix-${esc(k)}" type="number" inputmode="decimal" value="${v}" onchange="setMix('${esc(k)}',this.value)"></div>`).join('')}</div>
+
   <h2>Rendement dit jaar</h2>
   <p class="soft small">${(()=>{const sv=startValue();return sv&&sv.src==='auto'?`Automatisch: je waarde van ${fmtDate(sv.date)} (${eur(sv.v)}). Je hoeft niets in te vullen.`:'Vul de waarde van je portefeuille op 31 december in (bv. uit PDT met Timetravel). Vanaf volgend jaar neemt de app die zelf.';})()} Stortingen van dit jaar haalt de app uit je export.</p>
   <div class="grid2">${num('v0','Waarde op 31/12 (€)','0.01')}</div>
@@ -677,6 +693,7 @@ function restore(text){
   const cache=S.cache;S=deepMerge(structuredClone(DEFAULTS),d);S.cache=cache;migrate();save();
   bkMsg='Back-up teruggezet.';refresh(true);rSettings();
 }
+function setMix(k,v){S.settings.mix=S.settings.mix||{};S.settings.mix[k]=Math.max(0,parseFloat(v)||0);save();}
 function setS(k,v){S.settings[k]=v===''?null:parseFloat(v);if(k==='v0')S.settings.v0Year=today().getFullYear();save();}
 async function calibrate(id){
   const v=parseFloat($('#cal-'+id).value),m=S.map[id],msg=$('#calMsg');
